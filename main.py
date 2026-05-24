@@ -114,7 +114,7 @@ def responder_ia_comando(message):
     bot.send_chat_action(user_id, 'typing')
 
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-pro')
         response = model.generate_content(pergunta)
         
         if response.text:
