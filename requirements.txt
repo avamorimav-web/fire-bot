@@ -1,4 +1,2 @@
 pyTelegramBotAPI
-   reportlab
-pyTelegramBotAPI
 google-genai
