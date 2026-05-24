@@ -121,12 +121,16 @@ def processar_ia_ou_valores(message):
 
     bot.send_chat_action(message.chat.id, 'typing')
 
-    try:
+try:
+        # Força o uso do modelo mais compatível e direto
         model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(texto)
-        bot.reply_to(message, response.text)
+        
+        # Se a resposta vier vazia ou travar, um aviso é gerado
+        if response.text:
+            bot.reply_to(message, response.text)
+        else:
+            bot.reply_to(message, "🤖 Minha IA processou o texto, mas devolveu uma resposta vazia.")
     except Exception as e:
-        bot.reply_to(message, f"Erro na IA: {str(e)}")
-
-if __name__ == '__main__':
-    bot.infinity_polling()
+        # Se der qualquer erro de biblioteca ou chave, ele vai falar na sua tela!
+        bot.reply_to(message, f"⚠️ Erro no cérebro de IA:\n`{str(e)}`")
