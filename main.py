@@ -1,15 +1,20 @@
-          import os
+import os
 import telebot
 import sqlite3
 from datetime import datetime
-from google import genai
+import google.generativeai as genai  # Versão mais estável e compatível
 
-# Configuração dos Tokens e Clientes
+# Configuração dos Tokens
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
 
 bot = telebot.TeleBot(TOKEN)
-ai_client = genai.Client(api_key=GEMINI_KEY)
+
+# Configura o Gemini de forma segura
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+else:
+    print("AVISO: GEMINI_API_KEY não encontrada nos Segredos!")
 
 # --- BANCO DE DADOS FINANCEIRO ---
 def init_db():
@@ -38,31 +43,38 @@ def send_welcome(message):
     itembtn3 = telebot.types.KeyboardButton('📊 Ver Extrato')
     markup.add(itembtn1, itembtn2, itembtn3)
     
-    bot.reply_to(message, "Olá! Eu sou o Fire, seu assistente pessoal e financeiro. 🔥\n\nAgora eu tenho um cérebro de IA! Pode me fazer qualquer pergunta, pedir cálculos ou ideias diretamente por texto.", reply_markup=markup)
+    bot.reply_to(message, "Olá! Eu sou o Fire, seu assistente pessoal e financeiro. 🔥\n\nO cérebro de IA está ativo! Pode me fazer qualquer pergunta diretamente por texto.", reply_markup=markup)
 
-# --- INTEGRAÇÃO COM O CÉREBRO DE IA (GEMINI) ---
+# --- INTEGRAÇÃO COM O CÉREBRO DE IA ---
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def responder_com_ia(message):
     texto_usuario = message.text
 
-    # Ignora os botões do menu financeiro para não dar conflito (vamos programar os botões depois)
-    if texto_usuario in ['➕ Registrar Entrada', '➖ Registrar Saída', '📊 Ver Extrato']:
-        bot.reply_to(message, f"Você clicou em '{texto_usuario}'. Em breve reativaremos essa função financeira! Por enquanto, pode conversar comigo.")
+    # Ignora os botões do menu financeiro para não dar conflito
+    if texto_usuario in ['➕ Registrar Entrada', '➖ Registrar Saída', '📊 Ver Extrato', '📄 Gerar PDF']:
+        bot.reply_to(message, f"Você clicou no botão financeiro '{texto_usuario}'.")
         return
 
-    # Avisa o usuário que a IA está pensando
+    # Se a chave da IA não existir, avisa logo
+    if not GEMINI_KEY:
+        bot.reply_to(message, "Erro: A sua chave GEMINI_API_KEY não está configurada nos Segredos do Fly.io!")
+        return
+
     bot.send_chat_action(message.chat.id, 'typing')
 
     try:
-        # Envia a pergunta do Telegram direto para o Gemini
-        response = ai_client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=texto_usuario,
-        )
-        # Devolve a resposta inteligente da IA para o seu Telegram
+        # Usa o modelo mais leve, rápido e atual do Gemini
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(texto_usuario)
+        
+        # Envia a resposta da IA de volta
         bot.reply_to(message, response.text)
         
     except Exception as e:
-        bot.reply_to(message, "Ops, meu cérebro deu um nó tentando processar isso. Verifique se a GEMINI_API_KEY está certa nos Segredos!")  
-        if __name__ == '__main__':
-    bot.infinity_polling()
+        # SE DER ERRO, O BOT VAI TE MANDAR O ERRO REAL NO TELEGRAM!
+        bot.reply_to(message, f"Ops! Meu cérebro de IA deu um erro:\n`{str(e)}`")
+
+# Mantém o bot ligado
+if __name__ == '__main__':
+    print("Bot iniciado com sucesso...")
+    bot.infinity_polling()              
