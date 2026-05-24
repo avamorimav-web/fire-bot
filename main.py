@@ -62,9 +62,10 @@ def send_welcome(message):
     texto_boas_vindas = (
         "Olá! Eu sou o Controleporia Bot. 🤖🔥\n\n"
         "• Para usar as **Finanças**, clique nos botões abaixo.\n"
-        "• Para usar a **IA**, basta digitar qualquer pergunta, cálculo ou ideia diretamente no chat!"
+        "• Para usar a **IA**, use o comando **/ia** seguido da sua pergunta!\n"
+        "  _Exemplo:_ `/ia Me dê ideias de jantar saudável`"
     )
-    bot.reply_to(message, texto_boas_vindas, reply_markup=markup)
+    bot.reply_to(message, texto_boas_vindas, reply_markup=markup, parse_mode="Markdown")
 
 # 5. Monitoramento dos Botões Financeiros
 @bot.message_handler(func=lambda message: message.text in ['➕ Entrada', '➖ Saída', '📊 Meu Extrato'])
@@ -94,9 +95,38 @@ def escutar_botoes(message):
         relatorio += f"\n💰 **Saldo Atual:** R$ {saldo:.2f}"
         bot.reply_to(message, relatorio, parse_mode="Markdown")
 
-# 6. Processamento Inteligente (IA ou Valores)
+# 6. COMANDO EXCLUSIVO DA IA (Garante que o Telegram não confunda)
+@bot.message_handler(commands=['ia'])
+def responder_ia_comando(message):
+    user_id = message.chat.id
+    
+    # Remove o "/ia " do início para pegar só a pergunta do usuário
+    pergunta = message.text.replace('/ia', '').strip()
+    
+    if not pergunta:
+        bot.reply_to(message, "⚠️ Escreva algo depois do comando! Exemplo: `/ia qual a capital do Brasil?`", parse_mode="Markdown")
+        return
+
+    if not GEMINI_KEY:
+        bot.reply_to(message, "Estou online, mas a minha chave de IA (GEMINI_API_KEY) não está configurada nos segredos.")
+        return
+
+    bot.send_chat_action(user_id, 'typing')
+
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(pergunta)
+        
+        if response.text:
+            bot.reply_to(message, response.text)
+        else:
+            bot.reply_to(message, "🤖 A IA processou, mas devolveu uma resposta vazia.")
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Erro na IA:\n`{str(e)}`", parse_mode="Markdown")
+
+# 7. Captura de Valores Financeiros (Quando não for comando)
 @bot.message_handler(func=lambda message: True, content_types=['text'])
-def processar_ia_ou_valores(message):
+def processar_valores(message):
     user_id = message.chat.id
     texto = message.text
     estado = user_state.get(user_id)
@@ -110,27 +140,8 @@ def processar_ia_ou_valores(message):
             user_state[user_id] = None  
             
             bot.reply_to(message, f"✅ R$ {valor_final:.2f} salvos em '{tipo_final}' com sucesso!")
-            return
         except ValueError:
             bot.reply_to(message, "⚠️ Digite apenas números. Se quiser cancelar, clique em outro botão.")
-            return
 
-    if not GEMINI_KEY:
-        bot.reply_to(message, "Estou online, mas a minha chave de IA (GEMINI_API_KEY) ainda não foi configurada.")
-        return
-
-    bot.send_chat_action(message.chat.id, 'typing')
-
-try:
-        # Força o uso do modelo mais compatível e direto
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(texto)
-        
-        # Se a resposta vier vazia ou travar, um aviso é gerado
-        if response.text:
-            bot.reply_to(message, response.text)
-        else:
-            bot.reply_to(message, "🤖 Minha IA processou o texto, mas devolveu uma resposta vazia.")
-    except Exception as e:
-        # Se der qualquer erro de biblioteca ou chave, ele vai falar na sua tela!
-        bot.reply_to(message, f"⚠️ Erro no cérebro de IA:\n`{str(e)}`")
+if __name__ == '__main__':
+    bot.infinity_polling()
