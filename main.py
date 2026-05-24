@@ -2,7 +2,7 @@ import os
 import telebot
 import sqlite3
 from datetime import datetime
-import google.generativeai as genai  # Versão mais estável e compatível
+import google.generativeai as genai
 
 # Configuração dos Tokens
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -10,11 +10,12 @@ GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
 
 bot = telebot.TeleBot(TOKEN)
 
-# Configura o Gemini de forma segura
+# Dicionário temporário para controlar o estado financeiro de cada usuário
+user_state = {}
+
+# Configura o Gemini se a chave existir nos segredos
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
-else:
-    print("AVISO: GEMINI_API_KEY não encontrada nos Segredos!")
 
 # --- BANCO DE DADOS FINANCEIRO ---
 def init_db():
@@ -34,6 +35,24 @@ def init_db():
 
 init_db()
 
+# --- FUNÇÕES AUXILIARES DO BANCO ---
+def salvar_transacao(user_id, tipo, valor):
+    conn = sqlite3.connect('financeiro.db')
+    cursor = conn.cursor()
+    data_atual = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute('INSERT INTO transacoes (user_id, tipo, valor, data) VALUES (?, ?, ?, ?)',
+                   (user_id, tipo, valor, data_atual))
+    conn.commit()
+    conn.close()
+
+def obter_extrato(user_id):
+    conn = sqlite3.connect('financeiro.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT tipo, valor, data FROM transacoes WHERE user_id = ? ORDER BY id DESC LIMIT 5', (user_id,))
+    linhas = cursor.fetchall()
+    conn.close()
+    return linhas
+
 # --- COMANDO START ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -43,38 +62,73 @@ def send_welcome(message):
     itembtn3 = telebot.types.KeyboardButton('📊 Ver Extrato')
     markup.add(itembtn1, itembtn2, itembtn3)
     
-    bot.reply_to(message, "Olá! Eu sou o Fire, seu assistente pessoal e financeiro. 🔥\n\nO cérebro de IA está ativo! Pode me fazer qualquer pergunta diretamente por texto.", reply_markup=markup)
+    bot.reply_to(message, "Olá! Eu sou o Fire, seu assistente pessoal e financeiro. 🔥\n\nUse os botões abaixo para suas contas ou me mande qualquer pergunta por texto para conversar com minha IA!", reply_markup=markup)
 
-# --- INTEGRAÇÃO COM O CÉREBRO DE IA ---
+# --- LÓGICA DO MENU FINANCEIRO ---
+@bot.message_handler(func=lambda message: message.text in ['➕ Registrar Entrada', '➖ Registrar Saída', '📊 Ver Extrato'])
+def escutar_botoes(message):
+    user_id = message.chat.id
+    texto = message.text
+
+    if texto == '➕ Registrar Entrada':
+        user_state[user_id] = 'aguardando_entrada'
+        bot.reply_to(message, "Digite o valor da Entrada (Ex: 150.50):")
+    elif texto == '➖ Registrar Saída':
+        user_state[user_id] = 'aguardando_saida'
+        bot.reply_to(message, "Digite o valor da Saída (Ex: 50.25):")
+    elif texto == '📊 Ver Extrato':
+        extrato = obter_extrato(user_id)
+        if not extrato:
+            bot.reply_to(message, "Nenhum registro encontrado ainda!")
+            return
+        
+        resposta = "📊 **Seu Extrato Recente:**\n\n"
+        total = 0.0
+        for tipo, valor, data in extrato:
+            emoji = "🟢" if tipo == "Entrada" else "🔴"
+            resposta += f"{emoji} {tipo}: R$ {valor:.2f} | {data}\n"
+            total += valor if tipo == "Entrada" else -valor
+            
+        resposta += f"\n💰 **Saldo do período:** R$ {total:.2f}"
+        bot.reply_to(message, resposta, parse_mode="Markdown")
+
+# --- CAPTURA DE TEXTO GERAL (IA ou Valores) ---
 @bot.message_handler(func=lambda message: True, content_types=['text'])
-def responder_com_ia(message):
-    texto_usuario = message.text
+def tratar_texto_geral(message):
+    user_id = message.chat.id
+    texto = message.text
+    state = user_state.get(user_id)
 
-    # Ignora os botões do menu financeiro para não dar conflito
-    if texto_usuario in ['➕ Registrar Entrada', '➖ Registrar Saída', '📊 Ver Extrato', '📄 Gerar PDF']:
-        bot.reply_to(message, f"Você clicou no botão financeiro '{texto_usuario}'.")
-        return
+    # Se o bot estiver esperando um número para o financeiro
+    if state in ['aguardando_entrada', 'aguardando_saida']:
+        try:
+            # Substitui vírgula por ponto para o Python entender
+            valor_limpo = float(texto.replace(',', '.'))
+            tipo_transacao = "Entrada" if state == 'aguardando_entrada' else "Saída"
+            
+            salvar_transacao(user_id, tipo_transacao, valor_limpo)
+            
+            # Limpa o estado após salvar
+            user_state[user_id] = None
+            bot.reply_to(message, f"✅ {tipo_transacao} de R$ {valor_limpo:.2f} registrada com sucesso!")
+            return
+        except ValueError:
+            bot.reply_to(message, "⚠️ Valor inválido! Por favor, digite apenas números (Ex: 25.50). Se desistiu, clique em outro botão.")
+            return
 
-    # Se a chave da IA não existir, avisa logo
+    # --- SE FOR CONVERSA NORMAL (CHAMA A IA GEMINI) ---
     if not GEMINI_KEY:
-        bot.reply_to(message, "Erro: A sua chave GEMINI_API_KEY não está configurada nos Segredos do Fly.io!")
+        bot.reply_to(message, "⚠️ O sistema financeiro funcionou, mas a chave `GEMINI_API_KEY` não está configurada nos segredos do Fly.io!")
         return
 
     bot.send_chat_action(message.chat.id, 'typing')
 
     try:
-        # Usa o modelo mais leve, rápido e atual do Gemini
         model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(texto_usuario)
-        
-        # Envia a resposta da IA de volta
+        response = model.generate_content(texto)
         bot.reply_to(message, response.text)
-        
     except Exception as e:
-        # SE DER ERRO, O BOT VAI TE MANDAR O ERRO REAL NO TELEGRAM!
-        bot.reply_to(message, f"Ops! Meu cérebro de IA deu um erro:\n`{str(e)}`")
+        bot.reply_to(message, f"Erro ao acionar a IA:\n`{str(e)}`")
 
-# Mantém o bot ligado
 if __name__ == '__main__':
-    print("Bot iniciado com sucesso...")
-    bot.infinity_polling()              
+    bot.infinity_polling()
