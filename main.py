@@ -2,7 +2,7 @@ import os
 import telebot
 import sqlite3
 from datetime import datetime
-from google import genai  # Nova biblioteca oficial e atualizada
+from google import genai
 
 # 1. Configuração dos Tokens
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -11,12 +11,12 @@ GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
 bot = telebot.TeleBot(TOKEN)
 user_state = {}
 
-# Configura o cliente moderno da IA se a chave existir
-ai_client = None
 if GEMINI_KEY:
     ai_client = genai.Client(api_key=GEMINI_KEY)
+else:
+    ai_client = None
 
-# 2. Criação do Banco de Dados Limpo
+# 2. Criação do Banco de Dados
 def init_db():
     conn = sqlite3.connect('controleporia.db')
     cursor = conn.cursor()
@@ -64,10 +64,9 @@ def send_welcome(message):
     texto_boas_vindas = (
         "Olá! Eu sou o Controleporia Bot. 🤖🔥\n\n"
         "• Para usar as **Finanças**, clique nos botões abaixo.\n"
-        "• Para usar a **IA**, use o comando **/ia** seguido da sua pergunta!\n"
-        "  _Exemplo:_ `/ia Me dê uma receita rápida`"
+        "• Para falar comigo, **basta digitar qualquer texto, cálculo ou ideia diretamente no chat!** Eu te responderei usando IA."
     )
-    bot.reply_to(message, texto_boas_vindas, reply_markup=markup, parse_mode="Markdown")
+    bot.reply_to(message, texto_boas_vindas, reply_markup=markup)
 
 # 5. Monitoramento dos Botões Financeiros
 @bot.message_handler(func=lambda message: message.text in ['➕ Entrada', '➖ Saída', '📊 Meu Extrato'])
@@ -97,16 +96,29 @@ def escutar_botoes(message):
         relatorio += f"\n💰 **Saldo Atual:** R$ {saldo:.2f}"
         bot.reply_to(message, relatorio, parse_mode="Markdown")
 
-# 6. COMANDO DA IA ATUALIZADO (Evita o erro 404 antigo)
-@bot.message_handler(commands=['ia'])
-def responder_ia_comando(message):
+# 6. PROCESSAMENTO TOTAL LIVRE (IA RESPONDE TUDO DIRETO)
+@bot.message_handler(func=lambda message: True, content_types=['text'])
+def tratar_texto_direto(message):
     user_id = message.chat.id
-    pergunta = message.text.replace('/ia', '').strip()
-    
-    if not pergunta:
-        bot.reply_to(message, "⚠️ Escreva algo depois do comando! Exemplo: `/ia qual a capital do Brasil?`", parse_mode="Markdown")
-        return
+    texto = message.text
+    estado = user_state.get(user_id)
 
+    # CENÁRIO A: Se você clicou no botão financeiro antes, ele salva o valor número
+    if estado in ['esperando_entrada', 'esperando_saida']:
+        try:
+            valor_final = float(texto.replace(',', '.'))
+            tipo_final = "Entrada" if estado == 'esperando_entrada' else "Saída"
+            
+            salvar_registro(user_id, tipo_final, valor_final)
+            user_state[user_id] = None  # Reseta o estado financeiro
+            
+            bot.reply_to(message, f"✅ R$ {valor_final:.2f} salvos em '{tipo_final}' com sucesso!")
+            return
+        except ValueError:
+            bot.reply_to(message, "⚠️ Digite apenas números para o financeiro. Se quiser conversar com a IA, ignore os botões.")
+            return
+
+    # CENÁRIO B: Conversa normal sem comando nenhum (Chama a IA direto)
     if not ai_client:
         bot.reply_to(message, "Estou online, mas a minha chave de IA (GEMINI_API_KEY) não está configurada nos segredos.")
         return
@@ -114,37 +126,17 @@ def responder_ia_comando(message):
     bot.send_chat_action(user_id, 'typing')
 
     try:
-        # Padrão moderno da API da Google usando o modelo ideal de 2026
         response = ai_client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=pergunta,
+            contents=texto,
         )
         
         if response.text:
             bot.reply_to(message, response.text)
         else:
-            bot.reply_to(message, "🤖 A IA processou, mas devolveu uma resposta vazia.")
+            bot.reply_to(message, "🤖 Processei sua mensagem, mas não consegui gerar um texto de resposta.")
     except Exception as e:
         bot.reply_to(message, f"⚠️ Erro na IA:\n`{str(e)}`", parse_mode="Markdown")
-
-# 7. Captura de Valores Financeiros (Quando não for comando)
-@bot.message_handler(func=lambda message: True, content_types=['text'])
-def processar_valores(message):
-    user_id = message.chat.id
-    texto = message.text
-    estado = user_state.get(user_id)
-
-    if estado in ['esperando_entrada', 'esperando_saida']:
-        try:
-            valor_final = float(texto.replace(',', '.'))
-            tipo_final = "Entrada" if estado == 'esperando_entrada' else "Saída"
-            
-            salvar_registro(user_id, tipo_final, valor_final)
-            user_state[user_id] = None  
-            
-            bot.reply_to(message, f"✅ R$ {valor_final:.2f} salvos em '{tipo_final}' com sucesso!")
-        except ValueError:
-            bot.reply_to(message, "⚠️ Digite apenas numbers. Se quiser cancelar, clique em outro botão.")
 
 if __name__ == '__main__':
     bot.infinity_polling()
