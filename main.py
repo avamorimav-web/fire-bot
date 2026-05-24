@@ -2,7 +2,7 @@ import os
 import telebot
 import sqlite3
 from datetime import datetime
-import google.generativeai as genai
+from google import genai  # Nova biblioteca oficial e atualizada
 
 # 1. Configuração dos Tokens
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -11,8 +11,10 @@ GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
 bot = telebot.TeleBot(TOKEN)
 user_state = {}
 
+# Configura o cliente moderno da IA se a chave existir
+ai_client = None
 if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
+    ai_client = genai.Client(api_key=GEMINI_KEY)
 
 # 2. Criação do Banco de Dados Limpo
 def init_db():
@@ -63,7 +65,7 @@ def send_welcome(message):
         "Olá! Eu sou o Controleporia Bot. 🤖🔥\n\n"
         "• Para usar as **Finanças**, clique nos botões abaixo.\n"
         "• Para usar a **IA**, use o comando **/ia** seguido da sua pergunta!\n"
-        "  _Exemplo:_ `/ia Me dê ideias de jantar saudável`"
+        "  _Exemplo:_ `/ia Me dê uma receita rápida`"
     )
     bot.reply_to(message, texto_boas_vindas, reply_markup=markup, parse_mode="Markdown")
 
@@ -95,27 +97,28 @@ def escutar_botoes(message):
         relatorio += f"\n💰 **Saldo Atual:** R$ {saldo:.2f}"
         bot.reply_to(message, relatorio, parse_mode="Markdown")
 
-# 6. COMANDO EXCLUSIVO DA IA (Garante que o Telegram não confunda)
+# 6. COMANDO DA IA ATUALIZADO (Evita o erro 404 antigo)
 @bot.message_handler(commands=['ia'])
 def responder_ia_comando(message):
     user_id = message.chat.id
-    
-    # Remove o "/ia " do início para pegar só a pergunta do usuário
     pergunta = message.text.replace('/ia', '').strip()
     
     if not pergunta:
         bot.reply_to(message, "⚠️ Escreva algo depois do comando! Exemplo: `/ia qual a capital do Brasil?`", parse_mode="Markdown")
         return
 
-    if not GEMINI_KEY:
+    if not ai_client:
         bot.reply_to(message, "Estou online, mas a minha chave de IA (GEMINI_API_KEY) não está configurada nos segredos.")
         return
 
     bot.send_chat_action(user_id, 'typing')
 
     try:
-        model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(pergunta)
+        # Padrão moderno da API da Google usando o modelo ideal de 2026
+        response = ai_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=pergunta,
+        )
         
         if response.text:
             bot.reply_to(message, response.text)
@@ -141,7 +144,7 @@ def processar_valores(message):
             
             bot.reply_to(message, f"✅ R$ {valor_final:.2f} salvos em '{tipo_final}' com sucesso!")
         except ValueError:
-            bot.reply_to(message, "⚠️ Digite apenas números. Se quiser cancelar, clique em outro botão.")
+            bot.reply_to(message, "⚠️ Digite apenas numbers. Se quiser cancelar, clique em outro botão.")
 
 if __name__ == '__main__':
     bot.infinity_polling()
