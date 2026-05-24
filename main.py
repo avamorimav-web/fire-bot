@@ -64,4 +64,5 @@ def responder_com_ia(message):
         
     except Exception as e:
         bot.reply_to(message, "Ops, meu cérebro deu um nó tentando processar isso. Verifique se a GEMINI_API_KEY está certa nos Segredos!")  
-        
+        if __name__ == '__main__':
+    bot.infinity_polling()
