@@ -7,20 +7,21 @@ from datetime import datetime
 
 # 1. CONFIGURAÇÃO DE SEGREDOS DA FLY.IO
 TOKEN_TELEGRAM = os.environ.get('TELEGRAM_TOKEN')
-CHAVE_OPENAI = os.environ.get('GEMINI_API_KEY') # Sua chave OpenAI salva como GEMINI_API_KEY
+CHAVE_OPENAI = os.environ.get('GEMINI_API_KEY') 
 
-print("🔥 [SISTEMA] Inicializando Fire iA com todas as funções ativas...")
+print("🔥 [SISTEMA] Inicializando Fire iA no MODELO RESTRITO com Saudação Comercial...")
 
 bot = telebot.TeleBot(TOKEN_TELEGRAM)
 client = OpenAI(api_key=CHAVE_OPENAI)
 
 ID_ADMIN_ALEXANDRE = 5435085592 
 
-# 2. INICIALIZAÇÃO COMPLETA DO BANCO DE DADOS (Finanças, Clientes e Lembretes)
+# 2. INICIALIZAÇÃO DO BANCO DE DADOS COMPLETO
 def iniciar_banco():
     try:
         conn = sqlite3.connect('fire_ia_data.db')
         cursor = conn.cursor()
+        
         # Tabela de Finanças
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS financas (
@@ -49,26 +50,67 @@ def iniciar_banco():
                 data_hora TEXT
             )
         ''')
+        # Tabela de Memória (Histórico de Conversa)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS historico_conversas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER,
+                role TEXT,
+                content TEXT,
+                data TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         conn.commit()
         conn.close()
-        print("🔥 [SISTEMA] Banco de dados SQLite 100% operacional.")
+        print("🔥 [SISTEMA] Banco de dados com Memória e Segurança máxima ativado.")
     except Exception as e:
         print(f"❌ [ERRO BANCO] {e}")
 
 iniciar_banco()
 
 # ----------------------------------------------------------------------
-# INTERCEPTOR DE SEGURANÇA (Verifica se o usuário está bloqueado)
+# FUNÇÕES DE GERENCIAMENTO DE MEMÓRIA (NUVEM DO FIRE IA)
 # ----------------------------------------------------------------------
-def usuario_bloqueado(user_id):
+def salvar_na_memoria(user_id, papel, texto):
+    try:
+        conn = sqlite3.connect('fire_ia_data.db')
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO historico_conversas (telegram_id, role, content) VALUES (?, ?, ?)', (user_id, papel, texto))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"❌ Erro ao salvar memória: {e}")
+
+def buscar_memoria_usuario(user_id, limite=10):
+    try:
+        conn = sqlite3.connect('fire_ia_data.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT role, content FROM historico_conversas WHERE telegram_id = ? ORDER BY data DESC LIMIT ?', (user_id, limite))
+        linhas = cursor.fetchall()
+        conn.close()
+        
+        mensagens = []
+        for papel, conteudo in reversed(linhas):
+            mensagens.append({"role": papel, "content": conteudo})
+        return mensagens
+    except Exception as e:
+        print(f"❌ Erro ao buscar memória: {e}")
+        return []
+
+# ----------------------------------------------------------------------
+# TRAVA DE SEGURANÇA MÁXIMA (MODELO RESTRITO)
+# ----------------------------------------------------------------------
+def usuario_autorizado(user_id):
     if user_id == ID_ADMIN_ALEXANDRE:
-        return False
+        return True
+        
     conn = sqlite3.connect('fire_ia_data.db')
     cursor = conn.cursor()
     cursor.execute('SELECT status FROM clientes WHERE telegram_id=?', (user_id,))
     resultado = cursor.fetchone()
     conn.close()
-    if resultado and resultado[0] == 'bloqueado':
+    
+    if resultado and resultado[0] == 'ativo':
         return True
     return False
 
@@ -85,8 +127,7 @@ def acao_salvar_financa(user_id, tipo, valor, descricao):
         conn.commit()
         conn.close()
         return f"💰 [Sucesso] R$ {valor:.2f} registrado como {tipo} ({descricao})."
-    except Exception as e:
-        return f"❌ Erro ao salvar finança: {e}"
+    except Exception as e: return f"❌ Erro ao salvar finança: {e}"
 
 def acao_gerar_extrato(user_id):
     try:
@@ -98,8 +139,7 @@ def acao_gerar_extrato(user_id):
         if not linhas: return "📊 Você ainda não possui movimentações financeiras registradas."
         
         extrato = "📊 *Seu Extrato Mensal Atualizado:*\n\n"
-        total_entrada = 0
-        total_saida = 0
+        total_entrada = total_saida = 0
         for tipo, valor, desc, data in linhas:
             if tipo == "ENTRADA":
                 extrato += f"🟢 + R$ {valor:.2f} | {desc} (_{data.split()[0]}_)\n"
@@ -107,11 +147,9 @@ def acao_gerar_extrato(user_id):
             else:
                 extrato += f"🔴 - R$ {valor:.2f} | {desc} (_{data.split()[0]}_)\n"
                 total_saida += valor
-        saldo = total_entrada - total_saida
-        extrato += f"\n🔹 *Total Entradas:* R$ {total_entrada:.2f}\n🔸 *Total Saídas:* R$ {total_saida:.2f}\n💰 *Saldo Atual:* R$ {saldo:.2f}"
+        extrato += f"\n🔹 *Total Entradas:* R$ {total_entrada:.2f}\n🔸 *Total Saídas:* R$ {total_saida:.2f}\n💰 *Saldo Atual:* R$ {total_entrada - total_saida:.2f}"
         return extrato
-    except Exception as e:
-        return f"❌ Erro ao gerar extrato: {e}"
+    except Exception as e: return f"❌ Erro ao gerar extrato: {e}"
 
 def acao_salvar_lembrete(user_id, tarefa, data_hora):
     try:
@@ -120,9 +158,8 @@ def acao_salvar_lembrete(user_id, tarefa, data_hora):
         cursor.execute('INSERT INTO lembretes (telegram_id, tarefa, data_hora) VALUES (?, ?, ?)', (user_id, tarefa, data_hora))
         conn.commit()
         conn.close()
-        return f"⏰ [Lembrete Agendado] Eu vou te lembrar de: '{tarefa}' na data/hora: {data_hora}."
-    except Exception as e:
-        return f"❌ Erro ao salvar lembrete: {e}"
+        return f"⏰ [Lembrete Agendado] Eu vou te lembrar de: '{tarefa}' em: {data_hora}."
+    except Exception as e: return f"❌ Erro ao salvar lembrete: {e}"
 
 def acao_buscar_web(termo):
     try:
@@ -133,11 +170,9 @@ def acao_buscar_web(termo):
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(res.text, 'html.parser')
             snippets = [div.get_text() for div in soup.find_all('div', class_='result__snippet')][:3]
-            return "\n".join(snippets) if snippets else "Sem resultados detalhados encontrados."
-    except:
-        return "O serviço de pesquisa web está instável no momento."
+            return "\n".join(snippets) if snippets else "Sem resultados detalhados."
+    except: return "Serviço de busca web instável."
 
-# 👑 FUNÇÕES DA IA PARA GERENCIAMENTO DE CLIENTES (Via conversa natural)
 def acao_admin_clientes(comando, id_alvo, nome_alvo=None):
     try:
         conn = sqlite3.connect('fire_ia_data.db')
@@ -148,77 +183,81 @@ def acao_admin_clientes(comando, id_alvo, nome_alvo=None):
                 ON CONFLICT(telegram_id) DO UPDATE SET status='ativo', nome=COALESCE(?, nome)
             ''', (id_alvo, nome_alvo, nome_alvo))
             conn.commit()
-            msg = f"🟢 Cliente com ID `{id_alvo}` foi Ativado/Cadastrado com sucesso."
+            msg = f"🟢 *Cliente Ativado com Sucesso!*\n👤 *Nome:* {nome_alvo}\n🆔 *ID:* `{id_alvo}`"
         elif comando == "BLOQUEAR":
             cursor.execute('UPDATE clientes SET status="bloqueado" WHERE telegram_id=?', (id_alvo,))
             conn.commit()
-            msg = f"🔴 Cliente com ID `{id_alvo}` foi Bloqueado com sucesso."
+            msg = f"🔴 *Acesso Bloqueado!*\n🆔 O ID `{id_alvo}` foi removido da lista de autorizados."
         elif comando == "LISTAR":
             cursor.execute('SELECT telegram_id, nome, status FROM clientes')
             linhas = cursor.fetchall()
-            if not linhas: msg = "📋 Nenhum cliente registrado no sistema."
+            if not linhas: msg = "📋 Nenhum cliente cadastrado no sistema ainda."
             else:
                 msg = "📋 *Painel de Clientes Fire iA:*\n\n"
                 for tid, nome, status in linhas:
-                    status_icon = "🟢" if status == 'ativo' else "🔴"
-                    msg += f"{status_icon} *{nome}* - ID: `{tid}` ({status})\n"
+                    icone = "🟢" if status == 'ativo' else "🔴"
+                    msg += f"{icone} *{nome}* - ID: `{tid}` (_{status}_)\n"
         conn.close()
         return msg
-    except Exception as e:
-        return f"❌ Erro no gerenciamento de clientes: {e}"
+    except Exception as e: return f"❌ Erro no gerenciamento de clientes: {e}"
 
 # ----------------------------------------------------------------------
-# 👋 MÓDULO: BOAS-VINDAS (/start)
+# 👋 MÓDULO: BOAS-VINDAS (/start) - LIMPO E COMERCIAL
 # ----------------------------------------------------------------------
 @bot.message_handler(commands=['start'])
 def boas_vindas(message):
-    if usuario_bloqueado(message.from_user.id):
-        bot.send_message(message.chat.id, "❌ Seu acesso está suspenso.")
-        return
+    user_id = message.from_user.id
     
+    if not usuario_autorizado(user_id):
+        msg_bloqueio = (
+            "❌ *Acesso Restrito!*\n\n"
+            "Seu perfil não está autorizado a utilizar o sistema do **Fire iA**.\n"
+            f"Para solicitar sua liberação, envie o seu número de identificação abaixo para o Administrador:\n\n"
+            f"🆔 *Seu ID:* `{user_id}`"
+        )
+        bot.send_message(message.chat.id, msg_bloqueio, parse_mode="Markdown")
+        return
+
     nome = message.from_user.first_name if message.from_user.first_name else "Cliente"
     texto = (
         f"🔥 *Bem-vindo ao Fire iA, {nome}!* 🔥\n\n"
-        "Eu sou a sua Inteligência Artificial central, operando **100% por conversa natural**, sem botões poluindo a tela! Olha tudo o que você pode fazer por aqui:\n\n"
-        "📚 *Professor Particular:* Tire foto de qualquer lição de escola ou faculdade e eu resolvo explicando o passo a passo.\n"
-        "🧮 *Super Calculadora:* Mande qualquer tipo de conta matemática complexa ou simples.\n"
-        "🎙️ *Comandos por Voz:* Pode falar por áudio que eu entendo e executo tudo.\n"
+        "Eu sou a sua Inteligência Artificial central, operando **100% por conversa natural**, sem botões poluindo a tela! E agora tenho memória total para lembrar do contexto de toda a nossa conversa. Olha tudo o que você pode fazer por aqui:\n\n"
+        "📚 *Professor Particular:* Tire foto de qualquer lição de escola ou faculdade e eu resolvo explicando o passo a passo de forma didática.\n"
+        "🧮 *Super Calculadora:* Mande qualquer tipo de conta matemática complexa ou lógica que eu calculo em tempo real.\n"
+        "🎙️ *Comandos por Voz:* Pode falar por áudio que eu entendo e executo tudo o que você mandar.\n"
         "💰 *Fluxo de Caixa:* Fale suas movimentações de dinheiro (Ex: 'Recebi 150 reais da venda' ou 'Gastei 40 com almoço') e peça seu 'extrato mensal' quando quiser.\n"
-        "⏰ *Lembretes:* Me peça para te lembrar de coisas relevantes (Ex: 'Me lembre de pagar a conta amanhã às 14h').\n"
-        "🔍 *Pesquisa na Web:* Pergunte sobre notícias do mundo ou fatos em tempo real.\n\n"
-        "👑 *Para o Admin Alexandre:* Você pode gerenciar seus clientes mandando mensagens naturais como 'Ative o cliente 12345 nome Pedro' ou 'Me mostre a lista de clientes'.\n\n"
+        "⏰ *Lembretes:* Me peça para te lembrar de coisas relevantes (Ex: 'Me lembre de enviar o relatório amanhã às 14h').\n"
+        "🔍 *Pesquisa na Web:* Pergunte sobre notícias do mundo, cotações ou fatos atuais que eu busco na internet na hora.\n\n"
         "Como posso te ajudar agora? Pode falar!"
     )
     bot.send_message(message.chat.id, texto, parse_mode="Markdown")
 
-# 👁️ FUNÇÃO 1: RECONHECIMENTO DE FOTOS (TAREFAS ESCOLARES / DOCUMENTOS)
+# 👁️ FUNÇÃO 1: RECONHECIMENTO DE FOTOS
 @bot.message_handler(content_types=['photo'])
 def tratar_foto(message):
-    if usuario_bloqueado(message.from_user.id): return
+    if not usuario_autorizado(message.from_user.id):
+        bot.reply_to(message, "❌ Seu acesso está bloqueado. Fale com o administrador.")
+        return
     try:
         file_id = message.photo[-1].file_id
         file_info = bot.get_file(file_id)
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
         bot.send_chat_action(message.chat.id, 'typing')
         
-        prompt_visao = (
-            "Você é o Fire iA. Se a imagem contiver uma tarefa escolar, conta, exercício ou prova, "
-            "resolva tudo perfeitamente fornecendo o passo a passo didático explicativo para o estudante aprender. "
-            "Se for outro tipo de foto ou documento, analise e descreva com altíssima qualidade."
-        )
-        
+        prompt_visao = "Você é o Fire iA. Resolva a tarefa escolar desta imagem com o passo a passo ou descreva o documento perfeitamente."
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": [{"type": "text", "text": prompt_visao}, {"type": "image_url", "image_url": {"url": file_url}}]}]
         )
         bot.reply_to(message, response.choices[0].message.content)
-    except Exception as e:
-        bot.reply_to(message, "🔥 Erro ao processar a imagem. Envie novamente.")
+    except: bot.reply_to(message, "🔥 Erro ao processar imagem.")
 
-# 🎙️ FUNÇÃO 2: RECONHECIMENTO DE VOZ (WHISPER)
+# 🎙️ FUNÇÃO 2: RECONHECIMENTO DE VOZ
 @bot.message_handler(content_types=['voice'])
 def tratar_voz(message):
-    if usuario_bloqueado(message.from_user.id): return
+    if not usuario_autorizado(message.from_user.id):
+        bot.reply_to(message, "❌ Seu acesso está bloqueado. Fale com o administrador.")
+        return
     try:
         file_info = bot.get_file(message.voice.file_id)
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
@@ -233,53 +272,64 @@ def tratar_voz(message):
         
         message.text = transcricao.text
         tratar_texto(message)
-    except:
-        bot.reply_to(message, "🔥 Não consegui decifrar seu áudio.")
+    except: bot.reply_to(message, "🔥 Não consegui decifrar o áudio.")
 
-# 🧠 FUNÇÃO 3: CÉREBRO DA IA 100% NATURAL (CONVERSA, CONTAS, EXTRATOS, BUSCA E ADMIN)
+# 🧠 FUNÇÃO 3: CÉREBRO PRINCIPAL COM MEMÓRIA PERSISTENTE E TRAVA DE SEGURANÇA
 @bot.message_handler(content_types=['text'])
 def tratar_texto(message):
-    if usuario_bloqueado(message.from_user.id): return
+    user_id = message.from_user.id
+    if not usuario_autorizado(user_id):
+        bot.reply_to(message, f"❌ Seu perfil não está autorizado. Passe seu ID para liberação:\n🆔 ID: `{user_id}`", parse_mode="Markdown")
+        return
+        
     try:
         bot.send_chat_action(message.chat.id, 'typing')
-        user_id = message.from_user.id
         eh_admin = "SIM" if user_id == ID_ADMIN_ALEXANDRE else "NÃO"
         
-        prompt_sistema = (
-            f"Você é o Fire iA, focado em conversa natural e intuitiva. Nunca use botões.\n"
-            f"O usuário atual é o Admin Alexandre? {eh_admin} (ID: {user_id}).\n\n"
-            "DIRETRIZES DE COMANDOS INTERNOS (Se identificar uma dessas intenções no texto do usuário, responda EXATAMENTE com a tag estruturada correspondente):\n"
-            "1. Salvar Entrada: [FINANCAS:ENTRADA:valor:descricao]\n"
-            "2. Salvar Saída: [FINANCAS:SAIDA:valor:descricao]\n"
-            "3. Ver Extrato Financeiro: [FINANCAS:EXTRATO]\n"
-            "4. Criar Lembrete: [LEMBRETE:descricao_da_tarefa:data_e_hora]\n"
-            "5. Pesquisa na Web: [BUSCA:termo_para_buscar_na_internet]\n\n"
-            "PAINEL DE CLIENTES (Apenas se Admin Alexandre for SIM):\n"
-            "6. Ativar/Cadastrar Cliente: [ADMIN:ATIVAR:id_do_cliente:nome_do_cliente]\n"
-            "7. Bloquear/Cortar Acesso: [ADMIN:BLOQUEAR:id_do_cliente]\n"
-            "8. Ver Lista de Clientes: [ADMIN:LISTAR]\n\n"
-            "Se o usuário estiver apenas conversando ou pedindo contas matemáticas, resolva diretamente de forma clara e profissional."
-        )
+        salvar_na_memoria(user_id, "user", message.text)
+        historico_contexto = buscar_memoria_usuario(user_id, limite=12)
+        
+        prompt_sistema = {
+            "role": "system",
+            "content": (
+                f"Você é o Fire iA, focado em conversa natural e intuitiva. Você possui memória das mensagens anteriores da conversa atual.\n"
+                f"O usuário atual é o Admin Alexandre? {eh_admin} (ID: {user_id}).\n\n"
+                "DIRETRIZES DE COMANDOS INTERNOS (Responda EXATAMENTE com a tag se detectar a intenção):\n"
+                "1. Salvar Entrada: [FINANCAS:ENTRADA:valor:descricao]\n"
+                "2. Salvar Saída: [FINANCAS:SAIDA:valor:descricao]\n"
+                "3. Ver Extrato: [FINANCAS:EXTRATO]\n"
+                "4. Criar Lembrete: [LEMBRETE:descricao:data_e_hora]\n"
+                "5. Pesquisa na Web: [BUSCA:termo_para_buscar]\n\n"
+                "PAINEL DE CLIENTES (Apenas se Admin Alexandre for SIM):\n"
+                "6. Ativar/Cadastrar: [ADMIN:ATIVAR:id:nome]\n"
+                "7. Bloquear: [ADMIN:BLOQUEAR:id]\n"
+                "8. Lista Clientes: [ADMIN:LISTAR]\n\n"
+                "Use o histórico de mensagens fornecido para contextualizar as respostas e não agir como se fosse uma primeira interação."
+            )
+        }
+        
+        mensagens_completas = [prompt_sistema] + historico_contexto
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": prompt_sistema}, {"role": "user", "content": message.text}]
+            messages=mensagens_completas
         )
         
         texto_ia = response.choices[0].message.content
+        salvar_na_memoria(user_id, "assistant", texto_ia)
         
+        # 🔥 EXECUÇÃO DAS AÇÕES REAIS LOGICAMENTE DETECTADAS
         if "[FINANCAS:" in texto_ia:
-            if "EXTRATO" in texto_ia:
-                res_financa = acao_gerar_extrato(user_id)
+            if "EXTRATO" in texto_ia: res = acao_gerar_extrato(user_id)
             else:
                 partes = texto_ia.replace("[", "").replace("]", "").split(":")
-                res_financa = acao_salvar_financa(user_id, partes[1], partes[2], partes[3])
-            bot.send_message(message.chat.id, res_financa, parse_mode="Markdown")
+                res = acao_salvar_financa(user_id, partes[1], partes[2], partes[3])
+            bot.send_message(message.chat.id, res, parse_mode="Markdown")
             
         elif "[LEMBRETE:" in texto_ia:
             partes = texto_ia.replace("[", "").replace("]", "").split(":")
-            res_lembrete = acao_salvar_lembrete(user_id, partes[1], partes[2])
-            bot.send_message(message.chat.id, res_lembrete)
+            res = acao_salvar_lembrete(user_id, partes[1], partes[2])
+            bot.send_message(message.chat.id, res)
             
         elif "[BUSCA:" in texto_ia:
             termo = texto_ia.split("[BUSCA:")[1].split("]")[0]
@@ -287,33 +337,30 @@ def tratar_texto(message):
             resposta_final_web = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": f"Você é o Fire iA. Formate e explique essa informação extraída em tempo real da internet: {dados_da_internet}"},
+                    {"role": "system", "content": f"Você é o Fire iA. Entregue a resposta baseando-se nestes dados reais obtidos da internet: {dados_da_internet}"},
                     {"role": "user", "content": message.text}
                 ]
             )
             bot.send_message(message.chat.id, resposta_final_web.choices[0].message.content, parse_mode="Markdown")
+            salvar_na_memoria(user_id, "assistant", resposta_final_web.choices[0].message.content)
             
         elif "[ADMIN:" in texto_ia:
             partes = texto_ia.replace("[", "").replace("]", "").split(":")
             comando_adm = partes[1]
-            if comando_adm == "LISTAR":
-                res_adm = acao_admin_clientes("LISTAR", 0)
-            elif comando_adm == "BLOQUEAR":
-                res_adm = acao_admin_clientes("BLOQUEAR", int(partes[2]))
-            else:
-                res_adm = acao_admin_clientes("ATIVAR", int(partes[2]), partes[3])
+            if comando_adm == "LISTAR": res_adm = acao_admin_clientes("LISTAR", 0)
+            elif comando_adm == "BLOQUEAR": res_adm = acao_admin_clientes("BLOQUEAR", int(partes[2]))
+            else: res_adm = acao_admin_clientes("ATIVAR", int(partes[2]), partes[3])
             bot.send_message(message.chat.id, res_adm, parse_mode="Markdown")
             
         else:
             bot.send_message(message.chat.id, texto_ia, parse_mode="Markdown")
             
     except Exception as e:
-        bot.reply_to(message, "🔥 Meu processamento encontrou uma instabilidade temporária.")
+        print(e)
+        bot.reply_to(message, "🔥 Instabilidade temporária no núcleo de memória.")
 
 print("🔥 [SISTEMA] Escutando o Telegram via Polling Contínuo...")
 
 while True:
-    try:
-        bot.polling(none_stop=True, timeout=60)
-    except:
-        pass
+    try: bot.polling(none_stop=True, timeout=60)
+    except: pass
