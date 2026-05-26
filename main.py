@@ -6,7 +6,13 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import sqlite3
 import requests
 
-# ======= CONFIGURAÇÕES INICIAIS =======
+# =====================================================================
+# 🔐 CONTROLE DE FRANQUIA: COLOQUE OS IDs AUTORIZADOS AQUI DENTRO
+# (Exemplo: [12345678, 987654321])
+# O seu ID e o da sua esposa precisam estar aqui para o bot responder!
+# =====================================================================
+ADMINS_E_CLIENTES = [123456789] # <-- Substitua pelo seu ID real e adicione os novos clientes aqui
+
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
 OPENAI_KEY = os.environ.get('GEMINI_API_KEY') 
 
@@ -16,7 +22,7 @@ client = OpenAI(api_key=OPENAI_KEY)
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-# ======= BANCO DE DADOS LOCAL =======
+# ======= BANCO DE DADOS MULTIUSUÁRIO =======
 def init_db():
     conn = sqlite3.connect('fire_ia.db')
     cursor = conn.cursor()
@@ -44,14 +50,30 @@ def init_db():
 
 init_db()
 
+# ======= FILTRO DE SEGURANÇA DA FRANQUIA =======
+def usuario_autorizado(message):
+    user_id = message.chat.id
+    if user_id in ADMINS_E_CLIENTES:
+        return True
+    
+    mensagem_bloqueio = (
+        f"❌ **ACESSO NÃO AUTORIZADO**\n\n"
+        f"Olá! Você tentou acessar o **Fire iA**, o assistente pessoal mais avançado do Telegram.\n\n"
+        f"🔑 Para adquirir sua licença de uso ou renovar sua assinatura mensal, entre em contato diretamente com o franqueado responsável:\n\n"
+        f"🤠 **Alexandre Amorim**\n\n"
+        f"ℹ️ _Informe o seu código de identificação ao administrador:_\n"
+        f"📌 **Seu ID:** `{user_id}`"
+    )
+    bot.reply_to(message, message_bloqueio, parse_mode="Markdown")
+    return False
+
 def disparar_alarme(user_id, texto_lembrete, tipo_rep):
     try:
-        mensagem_alarme = f"🔔 **ALARME ATIVO, ALEXANDRE!**\n\n📌 **Lembrete:** {texto_lembrete}\n🔄 **Repetição:** {tipo_rep}"
+        mensagem_alarme = f"🔔 **ALARME ATIVO!**\n\n📌 **Lembrete:** {texto_lembrete}\n🔄 **Repetição:** {tipo_rep}"
         bot.send_message(user_id, mensagem_alarme, parse_mode="Markdown")
     except Exception as e:
         print(f"Erro ao disparar alarme: {e}")
 
-# ======= FUNÇÃO DO MENU FORÇADO =======
 def menu_principal():
     markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, one_time_keyboard=False)
     btn_entrada = telebot.types.KeyboardButton('➕ Entrada')
@@ -63,9 +85,10 @@ def menu_principal():
     markup.add(btn_extrato, btn_lembrete)
     return markup
 
-# ======= FLUXO DO BOTÃO DE LEMBRETE REPETITIVO =======
+# ======= FLUXO DO BOTÃO DE LEMBRETE =======
 @bot.message_handler(func=lambda msg: msg.text == '📅 Criar Lembrete')
 def iniciar_lembrete(message):
+    if not usuario_autorizado(message): return
     markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Apenas uma vez', 'Todos os dias', 'Toda semana', 'Voltar')
     msg = bot.reply_to(message, "Com que frequência você deseja esse alarme?", reply_markup=markup)
@@ -111,9 +134,10 @@ def agendar_lembrete_repetitivo(message, tipo_rep):
     except:
         bot.reply_to(message, "❌ Erro no formato! Use `HH:MM Texto`", reply_markup=menu_principal())
 
-# ======= 🎙️ TRANSCRITOR DE ÁUDIO (OUVIR SUA VOZ) =======
+# ======= 🎙️ TRANSCRITOR DE ÁUDIO =======
 @bot.message_handler(content_types=['voice', 'audio'])
 def transcrever_audio(message):
+    if not usuario_autorizado(message): return
     bot.send_chat_action(message.chat.id, 'typing')
     aviso = bot.reply_to(message, "⏳ **Ouvindo seu áudio no ChatGPT...**")
     
@@ -139,7 +163,7 @@ def transcrever_audio(message):
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Você é o Fire iA, o assistente pessoal do Alexandre. Responda ao comando dele de forma direta."},
+                {"role": "system", "content": "Você é o Fire iA, um assistente pessoal inteligente de alta performance. Responda de forma direta e muito amigável."},
                 {"role": "user", "content": transcription.text}
             ]
         )
@@ -150,9 +174,10 @@ def transcrever_audio(message):
     except Exception as e:
         bot.reply_to(message, f"❌ Erro ao processar áudio: {e}", reply_markup=menu_principal())
 
-# ======= FLUXOS DOS BOTÕES FINANCEIROS =======
+# ======= FLUXOS FINANCEIROS INDIVIDUAIS =======
 @bot.message_handler(func=lambda msg: msg.text in ['➕ Entrada', '➖ Saída'])
 def fluxo_financeiro(message):
+    if not usuario_autorizado(message): return
     tipo = 'Entrada' if '➕' in message.text else 'Saída'
     msg = bot.reply_to(message, f"Digite o valor da {tipo} seguido da categoria (Ex: 25.50 Almoço):")
     bot.register_next_step_handler(msg, salvar_financeiro, tipo)
@@ -169,28 +194,47 @@ def salvar_financeiro(message, tipo):
                        (message.chat.id, tipo, valor, categoria, datetime.now().strftime('%Y-%m-%d %H:%M')))
         conn.commit()
         conn.close()
-        bot.reply_to(message, f"✅ {tipo} de R$ {valor:.2f} gravada!", reply_markup=menu_principal())
+        bot.reply_to(message, f"✅ {tipo} de R$ {valor:.2f} gravada com sucesso!", reply_markup=menu_principal())
     except:
         bot.reply_to(message, "❌ Formato inválido.", reply_markup=menu_principal())
 
 @bot.message_handler(func=lambda msg: msg.text == '📊 Extrato Mensal')
 def ver_extrato(message):
+    if not usuario_autorizado(message): return
     conn = sqlite3.connect('fire_ia.db')
     cursor = conn.cursor()
     cursor.execute('SELECT tipo, valor, categoria FROM finance WHERE user_id = ?', (message.chat.id,))
     linhas = cursor.fetchall()
     conn.close()
+    
     if not linhas:
-        bot.reply_to(message, "📊 Sem lançamentos!", reply_markup=menu_principal())
+        bot.reply_to(message, "📊 Você ainda não possui nenhum lançamento cadastrado no seu extrato!", reply_markup=menu_principal())
         return
-    resumo = "📊 **SEU EXTRATO:**\n\n"
+        
+    resumo = "📊 **SEU EXTRATO EXCLUSIVO:**\n\n"
+    total_entradas = 0
+    total_saidas = 0
     for t, v, c in linhas:
-        resumo += f"{'🟢' if t == 'Entrada' else '🔴'} R$ {v:.2f} - {c}\n"
+        if t == 'Entrada':
+            resumo += f"🟢 R$ {v:.2f} - {c}\n"
+            total_entradas += v
+        else:
+            resumo += f"🔴 R$ {v:.2f} - {c}\n"
+            total_saidas += v
+            
+    saldo_final = total_entradas - total_saidas
+    resumo += f"\n---------------------\n"
+    resumo += f"💰 **Total Entradas:** R$ {total_entradas:.2f}\n"
+    resumo += f"📉 **Total Saídas:** R$ {total_saidas:.2f}\n"
+    resumo += f"💵 **Saldo Atual:** R$ {saldo_final:.2f}"
+    
     bot.reply_to(message, resumo, parse_mode="Markdown", reply_markup=menu_principal())
 
 # ======= 💬 CONVERSA NORMAL POR TEXTO =======
 @bot.message_handler(content_types=['text'])
 def conversa_ia(message):
+    if not usuario_autorizado(message): return
+    
     if message.text.lower() in ['/start', '/menu', 'start', 'menu']:
         enviar_menu(message)
         return
@@ -200,18 +244,19 @@ def conversa_ia(message):
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Você é o Fire iA, o assistente pessoal inteligente do Alexandre. Responda de forma direta e amigável."},
+                {"role": "system", "content": "Você é o Fire iA, um assistente pessoal inteligente de alta performance. Responda de forma direta, prestativa e amigável."},
                 {"role": "user", "content": message.text}
             ]
         )
         bot.reply_to(message, response.choices[0].message.content, reply_markup=menu_principal())
     except Exception as e:
-        bot.reply_to(message, f"⚠️ Erro na IA OpenAI: {e}", reply_markup=menu_principal())
+        bot.reply_to(message, f"⚠️ Erro na IA: {e}", reply_markup=menu_principal())
 
 # ======= COMANDO START =======
 @bot.message_handler(commands=['start', 'menu'])
 def enviar_menu(message):
-    bot.reply_to(message, "🔥 **Menu Fire iA Resetado!** Os botões abaixo foram reativados e travados na tela para você:", reply_markup=menu_principal(), parse_mode="Markdown")
+    if not usuario_autorizado(message): return
+    bot.reply_to(message, "🔥 **Bem-vindo ao Fire iA Premium!**\n\nSeu painel de controle pessoal está ativo e pronto. Escolha uma opção nos botões abaixo:", reply_markup=menu_principal(), parse_mode="Markdown")
 
 if __name__ == '__main__':
     bot.infinity_polling()
