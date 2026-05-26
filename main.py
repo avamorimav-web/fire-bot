@@ -11,8 +11,8 @@ CHAVE_OPENAI = 'SUA_CHAVE_OPENAI'
 bot = telebot.TeleBot(TOKEN_TELEGRAM)
 client = OpenAI(api_key=CHAVE_OPENAI)
 
-# ID do Telegram do Alexandre (Substitua pelo seu ID real para o gerenciador de clientes funcionar)
-ID_ADMIN_ALEXANDRE = 123456789 
+# ID do Telegram do Alexandre atualizado
+ID_ADMIN_ALEXANDRE = 5435085592 
 
 # 2. INICIALIZAÇÃO DO BANCO DE DADOS
 def iniciar_banco():
@@ -41,7 +41,7 @@ def iniciar_banco():
 iniciar_banco()
 
 # ----------------------------------------------------------------------
-# 👋 NOVO MÓDULO: MENSAGEM DE BOAS-VINDAS PARA CLIENTES NOVOS (/start)
+# 👋 MÓDULO: MENSAGEM DE BOAS-VINDAS PARA CLIENTES NOVOS (/start)
 # ----------------------------------------------------------------------
 @bot.message_handler(commands=['start'])
 def boas_vindas(message):
@@ -83,7 +83,7 @@ def tratar_foto(message):
         prompt_visao = (
             "Você é o Fire iA. O usuário te enviou esta imagem.\n"
             "DIRETRIZES DE VISÃO:\n"
-            "1. TAREFAS DE COLÉGIO: Se a imagem for um caderno, livre ou prova (Matemática, Física, Química, etc.), "
+            "1. TAREFAS DE COLÉGIO: Se a imagem for um caderno, livro ou prova (Matemática, Português, História, Física, Química, etc.), "
             "identifique a questão, resolva-a com precisão absoluta e explique o passo a passo de forma didática para o aluno aprender.\n"
             "2. OUTRAS IMAGENS: Se for um comprovante, documento ou foto comum, analise e descreva ou processe o que foi pedido.\n"
             "Responda sempre em português, de forma premium e prestativa."
