@@ -7,10 +7,10 @@ import sqlite3
 import requests
 
 # =====================================================================
-# 🔐 CONTROLE DE FRANQUIA: LISTA DE CLIENTES AUTORIZADOS
-# O ID do Alexandre já está cadastrado e liberado aqui!
+# 👑 ID DO DONO DA FRANQUIA (ALEXANDRE)
+# Você tem superpoderes para ativar/desativar qualquer cliente no chat!
 # =====================================================================
-ADMINS_E_CLIENTES = [5435085592] # <-- Seu ID real inserido com sucesso!
+DONO_DA_FRANQUIA = 5435085592
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
 OPENAI_KEY = os.environ.get('GEMINI_API_KEY') 
@@ -21,7 +21,7 @@ client = OpenAI(api_key=OPENAI_KEY)
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-# ======= BANCO DE DADOS MULTIUSUÁRIO =======
+# ======= BANCO DE DADOS AUTOMATIZADO DA FRANQUIA =======
 def init_db():
     conn = sqlite3.connect('fire_ia.db')
     cursor = conn.cursor()
@@ -44,6 +44,11 @@ def init_db():
             repeticao TEXT
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS clientes_ativos (
+            user_id INTEGER PRIMARY KEY
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -52,7 +57,17 @@ init_db()
 # ======= FILTRO DE SEGURANÇA DA FRANQUIA =======
 def usuario_autorizado(message):
     user_id = message.chat.id
-    if user_id in ADMINS_E_CLIENTES:
+    
+    if user_id == DONO_DA_FRANQUIA:
+        return True
+        
+    conn = sqlite3.connect('fire_ia.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT user_id FROM clientes_ativos WHERE user_id = ?', (user_id,))
+    cliente = cursor.fetchone()
+    conn.close()
+    
+    if cliente:
         return True
     
     mensagem_bloqueio = (
@@ -69,7 +84,7 @@ def usuario_autorizado(message):
 def disparar_alarme(user_id, texto_lembrete, tipo_rep):
     try:
         mensagem_alarme = f"🔔 **ALARME ATIVO!**\n\n📌 **Lembrete:** {texto_lembrete}\n🔄 **Repetição:** {tipo_rep}"
-        bot.send_message(user_id, mensagem_alarme, parse_mode="Markdown")
+        bot.send_message(user_id, mansion_alarme, parse_mode="Markdown")
     except Exception as e:
         print(f"Erro ao disparar alarme: {e}")
 
@@ -83,6 +98,59 @@ def menu_principal():
     markup.add(btn_entrada, btn_saida)
     markup.add(btn_extrato, btn_lembrete)
     return markup
+
+# ======= ⚙️ COMANDOS EXCLUSIVOS DE ADMINISTRADOR =======
+@bot.message_handler(func=lambda msg: msg.chat.id == DONO_DA_FRANQUIA and (msg.text.startswith('+') or msg.text.startswith('-') or msg.text.lower() == 'clientes'))
+def gerenciar_franquia(message):
+    texto = message.text.strip()
+    
+    if texto.startswith('+'):
+        try:
+            novo_id = int(texto.replace('+', '').strip())
+            conn = sqlite3.connect('fire_ia.db')
+            cursor = conn.cursor()
+            cursor.execute('INSERT OR IGNORE INTO clientes_ativos (user_id) VALUES (?)', (novo_id,))
+            conn.commit()
+            conn.close()
+            bot.reply_to(message, f"✅ **CLIENTE ATIVADO!**\n\nO ID `{novo_id}` foi adicionado à franquia e já pode usar o Fire iA!", parse_mode="Markdown")
+            try:
+                bot.send_message(novo_id, "🎉 **PARABÉNS!** Sua assinatura do **Fire iA** foi ativada pelo administrador Alexandre! Digite `menu` para começar.", parse_mode="Markdown")
+            except:
+                pass
+        except:
+            bot.reply_to(message, "⚠️ Erro! Use o formato: `+ 12345678`")
+
+    elif texto.startswith('-'):
+        try:
+            remover_id = int(texto.replace('-', '').strip())
+            conn = sqlite3.connect('fire_ia.db')
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM clientes_ativos WHERE user_id = ?', (remover_id,))
+            conn.commit()
+            conn.close()
+            bot.reply_to(message, f"⛔ **CLIENTE REMOVIDO!**\n\nO ID `{remover_id}` foi bloqueado no sistema.", parse_mode="Markdown")
+            try:
+                bot.send_message(remover_id, "⚠️ **ASSINATURA EXPIRADA:** Sua licença do Fire iA venceu. Entre em contato com Alexandre para renovar.", parse_mode="Markdown")
+            except:
+                pass
+        except:
+            bot.reply_to(message, "⚠️ Erro! Use o formato: `- 12345678`")
+
+    elif texto.lower() == 'clientes':
+        conn = sqlite3.connect('fire_ia.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT user_id FROM clientes_ativos')
+        linhas = cursor.fetchall()
+        conn.close()
+        
+        if not linhas:
+            bot.reply_to(message, "📊 **Franquia Zerada:** Você ainda não tem nenhum cliente ativo no sistema.")
+            return
+            
+        lista = "👥 **CLIENTES ATIVOS NA FRANQUIA:**\n\n"
+        for row in linhas:
+            lista += f"• ID: `{row[0]}`\n"
+        bot.reply_to(message, lista, parse_mode="Markdown")
 
 # ======= FLUXO DO BOTÃO DE LEMBRETE =======
 @bot.message_handler(func=lambda msg: msg.text == '📅 Criar Lembrete')
