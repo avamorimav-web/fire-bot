@@ -1,14 +1,13 @@
 import os
 import telebot
 from openai import OpenAI
-from datetime import datetime
+from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 import sqlite3
 import requests
 
 # =====================================================================
 # 👑 ID DO DONO DA FRANQUIA (ALEXANDRE)
-# Você tem superpoderes para ativar/desativar qualquer cliente no chat!
 # =====================================================================
 DONO_DA_FRANQUIA = 5435085592
 
@@ -46,7 +45,9 @@ def init_db():
     ''')
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS clientes_ativos (
-            user_id INTEGER PRIMARY KEY
+            user_id INTEGER PRIMARY KEY,
+            nome TEXT,
+            vencimento TEXT
         )
     ''')
     conn.commit()
@@ -54,28 +55,42 @@ def init_db():
 
 init_db()
 
-# ======= FILTRO DE SEGURANÇA DA FRANQUIA =======
+# ======= FILTRO DE SEGURANÇA COM EXPIRAÇÃO POR DIAS =======
 def usuario_autorizado(message):
     user_id = message.chat.id
+    nome_usuario = message.from_user.first_name or "Cliente"
     
     if user_id == DONO_DA_FRANQUIA:
         return True
         
     conn = sqlite3.connect('fire_ia.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT user_id FROM clientes_ativos WHERE user_id = ?', (user_id,))
+    cursor.execute('SELECT vencimento, nome FROM clientes_ativos WHERE user_id = ?', (user_id,))
     cliente = cursor.fetchone()
+    
+    if cliente and not cliente[1]:
+        cursor.execute('UPDATE clientes_ativos SET nome = ? WHERE user_id = ?', (nome_usuario, user_id))
+        conn.commit()
+        
     conn.close()
     
     if cliente:
-        return True
+        data_vencimento = datetime.strptime(cliente[0], '%Y-%m-%d %H:%M')
+        if datetime.now() < data_vencimento:
+            return True
+        else:
+            conn = sqlite3.connect('fire_ia.db')
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM clientes_ativos WHERE user_id = ?', (user_id,))
+            conn.commit()
+            conn.close()
     
     mensagem_bloqueio = (
-        f"❌ **ACESSO NÃO AUTORIZADO**\n\n"
-        f"Olá! Você tentou acessar o **Fire iA**, o assistente pessoal mais avançado do Telegram.\n\n"
-        f"🔑 Para adquirir sua licença de uso ou renovar sua assinatura mensal, entre em contato diretamente com o franqueado responsável:\n\n"
+        f"❌ **ACESSO NÃO AUTORIZADO / EXPIRADO**\n\n"
+        f"Olá, {nome_usuario}! Seu período de acesso ao **Fire iA** expirou ou não está ativo.\n\n"
+        f"🔑 Para adquirir sua licença, renovar seus dias ou solicitar um tissue, entre em contato com o administrador:\n\n"
         f"🤠 **Alexandre Amorim**\n\n"
-        f"ℹ️ _Informe o seu código de identificação ao administrador:_\n"
+        f"ℹ️ _Informe seu código para ativação imediata:_\n"
         f"📌 **Seu ID:** `{user_id}`"
     )
     bot.reply_to(message, mensagem_bloqueio, parse_mode="Markdown")
@@ -84,7 +99,7 @@ def usuario_autorizado(message):
 def disparar_alarme(user_id, texto_lembrete, tipo_rep):
     try:
         mensagem_alarme = f"🔔 **ALARME ATIVO!**\n\n📌 **Lembrete:** {texto_lembrete}\n🔄 **Repetição:** {tipo_rep}"
-        bot.send_message(user_id, mansion_alarme, parse_mode="Markdown")
+        bot.send_message(user_id, mensagem_alarme, parse_mode="Markdown")
     except Exception as e:
         print(f"Erro ao disparar alarme: {e}")
 
@@ -99,26 +114,38 @@ def menu_principal():
     markup.add(btn_extrato, btn_lembrete)
     return markup
 
-# ======= ⚙️ COMANDOS EXCLUSIVOS DE ADMINISTRADOR =======
+# ======= ⚙️ PAINEL DE CONTROLE SUPREMO DO ALEXANDRE =======
 @bot.message_handler(func=lambda msg: msg.chat.id == DONO_DA_FRANQUIA and (msg.text.startswith('+') or msg.text.startswith('-') or msg.text.lower() == 'clientes'))
 def gerenciar_franquia(message):
     texto = message.text.strip()
     
     if texto.startswith('+'):
         try:
-            novo_id = int(texto.replace('+', '').strip())
+            partes = texto.split()
+            novo_id = int(partes[1])
+            dias = int(partes[2])
+            
+            data_venc_objeto = datetime.now() + timedelta(days=dias)
+            data_venc_str = data_venc_objeto.strftime('%Y-%m-%d %H:%M')
+            
             conn = sqlite3.connect('fire_ia.db')
             cursor = conn.cursor()
-            cursor.execute('INSERT OR IGNORE INTO clientes_ativos (user_id) VALUES (?)', (novo_id,))
+            cursor.execute('''
+                INSERT INTO clientes_ativos (user_id, nome, vencimento) 
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET vencimento = excluded.vencimento
+            ''', (novo_id, "", data_venc_str))
             conn.commit()
             conn.close()
-            bot.reply_to(message, f"✅ **CLIENTE ATIVADO!**\n\nO ID `{novo_id}` foi adicionado à franquia e já pode usar o Fire iA!", parse_mode="Markdown")
+            
+            bot.reply_to(message, f"✅ **CLIENTE ATIVADO!**\n\n📌 ID: `{novo_id}`\n⏳ Período: **{dias} dias**\n📅 Vence em: {data_venc_objeto.strftime('%d/%m/%Y às %H:%M')}", parse_mode="Markdown")
+            
             try:
-                bot.send_message(novo_id, "🎉 **PARABÉNS!** Sua assinatura do **Fire iA** foi ativada pelo administrador Alexandre! Digite `menu` para começar.", parse_mode="Markdown")
+                bot.send_message(novo_id, f"🎉 **ACESSO LIBERADO!**\n\nSua assinatura do **Fire iA** foi ativada por **{dias} dias** pelo administrador Alexandre.\n\nDigite `menu` para começar a usar!", parse_mode="Markdown")
             except:
                 pass
         except:
-            bot.reply_to(message, "⚠️ Erro! Use o formato: `+ 12345678`")
+            bot.reply_to(message, "⚠️ **Erro no formato!** Use:\n`+ ID DIAS`\n_(Exemplo: + 987654321 30)_")
 
     elif texto.startswith('-'):
         try:
@@ -130,26 +157,34 @@ def gerenciar_franquia(message):
             conn.close()
             bot.reply_to(message, f"⛔ **CLIENTE REMOVIDO!**\n\nO ID `{remover_id}` foi bloqueado no sistema.", parse_mode="Markdown")
             try:
-                bot.send_message(remover_id, "⚠️ **ASSINATURA EXPIRADA:** Sua licença do Fire iA venceu. Entre em contato com Alexandre para renovar.", parse_mode="Markdown")
+                bot.send_message(remover_id, "⚠️ **ASSINATURA ENCERRADA:** Seu acesso ao Fire iA foi interrompido pelo administrador.", parse_mode="Markdown")
             except:
                 pass
         except:
-            bot.reply_to(message, "⚠️ Erro! Use o formato: `- 12345678`")
+            bot.reply_to(message, "⚠️ **Erro!** Use o formato: `- 12345678`")
 
     elif texto.lower() == 'clientes':
         conn = sqlite3.connect('fire_ia.db')
         cursor = conn.cursor()
-        cursor.execute('SELECT user_id FROM clientes_ativos')
+        cursor.execute('SELECT user_id, nome, vencimento FROM clientes_ativos')
         linhas = cursor.fetchall()
         conn.close()
         
         if not linhas:
-            bot.reply_to(message, "📊 **Franquia Zerada:** Você ainda não tem nenhum cliente ativo no sistema.")
+            bot.reply_to(message, "📊 **Franquia Zerada:** Você não tem nenhum cliente ativo no momento.")
             return
             
         lista = "👥 **CLIENTES ATIVOS NA FRANQUIA:**\n\n"
         for row in linhas:
-            lista += f"• ID: `{row[0]}`\n"
+            uid, nome, venc = row
+            nome_exibir = nome if nome else "Aguardando primeiro clique"
+            
+            data_venc = datetime.strptime(venc, '%Y-%m-%d %H:%M')
+            dias_restantes = (data_venc - datetime.now()).days + 1
+            
+            lista += f"👤 **{nome_exibir}** (ID: `{uid}`)\n"
+            lista += f"⏳ Restam: **{dias_restantes} dias** | 📅 Vence: {data_venc.strftime('%d/%m/%Y')}\n\n"
+            
         bot.reply_to(message, lista, parse_mode="Markdown")
 
 # ======= FLUXO DO BOTÃO DE LEMBRETE =======
@@ -167,7 +202,7 @@ def escolher_horario_lembrete(message):
         return
     tipo_rep = message.text
     msg = bot.reply_to(message, f"Defina o horário e o que lembrar.\n\n⚠️ **Use o formato:** `HH:MM Texto`\n(Ex: `08:00 Tomar remédio`)")
-    bot.register_next_step_handler(msg, agendar_lembrete_repetitivo, tipo_rep)
+    bot.register_next_step_handler(msg, escolher_horario_lembrete, tipo_rep)
 
 def agendar_lembrete_repetitivo(message, tipo_rep):
     try:
