@@ -8,7 +8,7 @@ import requests
 
 # ======= CONFIGURAÇÕES INICIAIS =======
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
-OPENAI_KEY = os.environ.get('GEMINI_API_KEY') # Puxa a chave sk-... que você salvou no Fly.io
+OPENAI_KEY = os.environ.get('GEMINI_API_KEY') 
 
 bot = telebot.TeleBot(TOKEN)
 client = OpenAI(api_key=OPENAI_KEY)
@@ -51,8 +51,9 @@ def disparar_alarme(user_id, texto_lembrete, tipo_rep):
     except Exception as e:
         print(f"Erro ao disparar alarme: {e}")
 
+# ======= FUNÇÃO DO MENU FORÇADO =======
 def menu_principal():
-    markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, one_time_keyboard=False)
     btn_entrada = telebot.types.KeyboardButton('➕ Entrada')
     btn_saida = telebot.types.KeyboardButton('➖ Saída')
     btn_extrato = telebot.types.KeyboardButton('📊 Extrato Mensal')
@@ -144,10 +145,10 @@ def transcrever_audio(message):
         )
         
         bot.delete_message(message.chat.id, aviso.message_id)
-        bot.reply_to(message, f"🎙️ **Ouvido:** _{transcription.text}_\n\n🤖 **Resposta:**\n{response.choices[0].message.content}")
+        bot.reply_to(message, f"🎙️ **Ouvido:** _{transcription.text}_\n\n🤖 **Resposta:**\n{response.choices[0].message.content}", reply_markup=menu_principal())
         
     except Exception as e:
-        bot.reply_to(message, f"❌ Erro ao processar áudio: {e}")
+        bot.reply_to(message, f"❌ Erro ao processar áudio: {e}", reply_markup=menu_principal())
 
 # ======= FLUXOS DOS BOTÕES FINANCEIROS =======
 @bot.message_handler(func=lambda msg: msg.text in ['➕ Entrada', '➖ Saída'])
@@ -179,17 +180,21 @@ def ver_extrato(message):
     cursor.execute('SELECT tipo, valor, categoria FROM finance WHERE user_id = ?', (message.chat.id,))
     linhas = cursor.fetchall()
     conn.close()
-    if not lines:
-        bot.reply_to(message, "📊 Sem lançamentos!")
+    if not linhas:
+        bot.reply_to(message, "📊 Sem lançamentos!", reply_markup=menu_principal())
         return
     resumo = "📊 **SEU EXTRATO:**\n\n"
     for t, v, c in linhas:
         resumo += f"{'🟢' if t == 'Entrada' else '🔴'} R$ {v:.2f} - {c}\n"
-    bot.reply_to(message, resumo, parse_mode="Markdown")
+    bot.reply_to(message, resumo, parse_mode="Markdown", reply_markup=menu_principal())
 
 # ======= 💬 CONVERSA NORMAL POR TEXTO =======
 @bot.message_handler(content_types=['text'])
 def conversa_ia(message):
+    if message.text.lower() in ['/start', '/menu', 'start', 'menu']:
+        enviar_menu(message)
+        return
+        
     bot.send_chat_action(message.chat.id, 'typing')
     try:
         response = client.chat.completions.create(
@@ -199,14 +204,14 @@ def conversa_ia(message):
                 {"role": "user", "content": message.text}
             ]
         )
-        bot.reply_to(message, response.choices[0].message.content)
+        bot.reply_to(message, response.choices[0].message.content, reply_markup=menu_principal())
     except Exception as e:
-        bot.reply_to(message, f"⚠️ Erro na IA OpenAI: {e}")
+        bot.reply_to(message, f"⚠️ Erro na IA OpenAI: {e}", reply_markup=menu_principal())
 
 # ======= COMANDO START =======
 @bot.message_handler(commands=['start', 'menu'])
 def enviar_menu(message):
-    bot.reply_to(message, "🔥 **Fire iA turbinado com ChatGPT Ativo!** Escolha uma opção:", reply_markup=menu_principal(), parse_mode="Markdown")
+    bot.reply_to(message, "🔥 **Menu Fire iA Resetado!** Os botões abaixo foram reativados e travados na tela para você:", reply_markup=menu_principal(), parse_mode="Markdown")
 
 if __name__ == '__main__':
     bot.infinity_polling()
