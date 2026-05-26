@@ -4,14 +4,19 @@ import requests
 import telebot
 from openai import OpenAI
 
-# 1. CONFIGURAÇÕES DE ACESSO
-TOKEN_TELEGRAM = 'SEU_TOKEN_DO_TELEGRAM'
-CHAVE_OPENAI = 'SUA_CHAVE_OPENAI'
+# 1. BUSCA DOS SEGREDOS EXATAMENTE COMO ESTÃO NO SEU PRINT DA FLY.IO
+TOKEN_TELEGRAM = os.environ.get('TELEGRAM_TOKEN')
+CHAVE_OPENAI = os.environ.get('GEMINI_API_KEY')  # Puxando a chave OpenAI que está guardada nesse nome
+
+print("🔥 [DIAGNÓSTICO] Iniciando o Fire iA com motor OpenAI...")
+
+if not TOKEN_TELEGRAM or not CHAVE_OPENAI:
+    print("❌ [ERRO CRÍTICO] Variáveis TELEGRAM_TOKEN ou GEMINI_API_KEY não foram encontradas nos Secrets!")
 
 bot = telebot.TeleBot(TOKEN_TELEGRAM)
 client = OpenAI(api_key=CHAVE_OPENAI)
 
-# ID do Telegram do Alexandre atualizado
+# ID do Telegram do Alexandre configurado
 ID_ADMIN_ALEXANDRE = 5435085592 
 
 # 2. INICIALIZAÇÃO DO BANCO DE DADOS
@@ -36,8 +41,9 @@ def iniciar_banco():
         ''')
         conn.commit()
         conn.close()
+        print("🔥 [DIAGNÓSTICO] Banco de dados verificado/criado.")
     except Exception as e:
-        print(f"Erro ao iniciar banco de dados: {e}")
+        print(f"❌ [ERRO] Falha no banco de dados: {e}")
 
 iniciar_banco()
 
@@ -59,7 +65,7 @@ def boas_vindas(message):
             "🎙️ *Comando por Voz:* Não quer digitar? Mande um áudio com a sua dúvida ou ordem que eu entendo perfeitamente.\n"
             "💰 *Fluxo de Caixa:* Controle seu dinheiro direto no chat! Diga frases como 'Ganhei 280 reais' ou 'Anota saída de 50 reais' que eu arquivo no seu relatório financeiro.\n"
             "🧮 *Super Calculadora:* Resolva qualquer tipo de conta, cálculo complexo, juros ou lógica na hora.\n"
-            "🔍 *Pesquisa na Web:* Pergunte sobre notícias, cotações ou updates do mundo que eu busco em tempo real.\n\n"
+            "🔍 *Pesquisa na Web:* Pergunte sobre notícias, cotações ou atualizações do mundo que eu busco em tempo real.\n\n"
             "Como posso te ajudar agora? É só mandar uma mensagem! 👇"
         )
         
@@ -70,7 +76,7 @@ def boas_vindas(message):
             reply_markup=telebot.types.ReplyKeyboardRemove()
         )
     except Exception as e:
-        print(f"Erro no start: {e}")
+        print(f"❌ [ERRO] Falha no start: {e}")
         bot.send_message(message.chat.id, "🔥 Bem-vindo ao Fire iA! O modo conversa natural está ativado. Pode falar comigo!", reply_markup=telebot.types.ReplyKeyboardRemove())
 
 # ----------------------------------------------------------------------
@@ -108,7 +114,7 @@ def tratar_foto(message):
         )
         bot.reply_to(message, response.choices[0].message.content, reply_markup=telebot.types.ReplyKeyboardRemove())
     except Exception as e:
-        print(f"Erro ao processar foto: {e}")
+        print(f"❌ [ERRO] Visão: {e}")
         bot.reply_to(message, "🔥 Erro no meu sensor de visão. Pode enviar a foto novamente?")
 
 # ----------------------------------------------------------------------
@@ -139,7 +145,7 @@ def tratar_voz(message):
         tratar_texto(message)
         
     except Exception as e:
-        print(f"Erro ao processar voz: {e}")
+        print(f"❌ [ERRO] Voz: {e}")
         bot.reply_to(message, "🔥 Não consegui decifrar o áudio. Pode repetir ou digitar?")
 
 # ----------------------------------------------------------------------
@@ -174,12 +180,14 @@ def tratar_texto(message):
         bot.send_message(message.chat.id, response.choices[0].message.content, reply_markup=telebot.types.ReplyKeyboardRemove())
         
     except Exception as e:
-        print(f"Erro ao processar texto: {e}")
+        print(f"❌ [ERRO] Texto: {e}")
         bot.reply_to(message, "🔥 Meu núcleo de processamento encontrou uma instabilidade. Pode repetir?")
+
+print("🔥 [DIAGNÓSTICO] Iniciando escuta de mensagens (Polling)...")
 
 # Execução contínua com auto-recuperação
 while True:
     try:
         bot.polling(none_stop=True, timeout=60)
     except Exception as e:
-        print(f"Reiniciando polling devido ao erro: {e}")
+        print(f"⚠️ [ALERTA] Reiniciando polling devido ao erro: {e}")
