@@ -7,11 +7,10 @@ import sqlite3
 import requests
 
 # =====================================================================
-# 🔐 CONTROLE DE FRANQUIA: COLOQUE OS IDs AUTORIZADOS AQUI DENTRO
-# (Exemplo: [12345678, 987654321])
-# O seu ID e o da sua esposa precisam estar aqui para o bot responder!
+# 🔐 CONTROLE DE FRANQUIA: LISTA DE CLIENTES AUTORIZADOS
+# O ID do Alexandre já está cadastrado e liberado aqui!
 # =====================================================================
-ADMINS_E_CLIENTES = [123456789] # <-- Substitua pelo seu ID real e adicione os novos clientes aqui
+ADMINS_E_CLIENTES = [5435085592] # <-- Seu ID real inserido com sucesso!
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
 OPENAI_KEY = os.environ.get('GEMINI_API_KEY') 
@@ -64,7 +63,7 @@ def usuario_autorizado(message):
         f"ℹ️ _Informe o seu código de identificação ao administrador:_\n"
         f"📌 **Seu ID:** `{user_id}`"
     )
-    bot.reply_to(message, message_bloqueio, parse_mode="Markdown")
+    bot.reply_to(message, mensagem_bloqueio, parse_mode="Markdown")
     return False
 
 def disparar_alarme(user_id, texto_lembrete, tipo_rep):
