@@ -101,7 +101,7 @@ def ver_extrato(message):
     linhas = cursor.fetchall()
     conn.close()
     
-    if not linhas:
+    if not lines:
         bot.reply_to(message, "📊 Você não tem lançamentos este mês!")
         return
         
@@ -167,24 +167,20 @@ def analisar_imagem(message):
     aviso = bot.reply_to(message, "🔔 **Fire iA 'Olhos' Ativados!** Baixando imagem do caderno e analisando as questões... Aguarde.")
     
     try:
-        # Pega a foto de maior resolução enviada
         file_id = message.photo[-1].file_id
         file_info = bot.get_file(file_id)
         
-        # Faz o download temporário no servidor
         downloaded_file = bot.download_file(file_info.file_path)
         nome_arquivo = f"imagem_{message.chat.id}.jpg"
         
         with open(nome_arquivo, 'wb') as new_file:
             new_file.write(downloaded_file)
             
-        # Carrega a imagem usando a biblioteca nativa ou lê os bytes diretos
         with open(nome_arquivo, 'rb') as f:
             bytes_imagem = f.read()
             
-        # Envia para a API do Gemini processar a imagem (Mudado para 1.5-flash para evitar o Erro 429)
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-2.5-flash',
             contents=[
                 types.Part.from_bytes(
                     data=bytes_imagem,
@@ -194,7 +190,6 @@ def analisar_imagem(message):
             ]
         )
         
-        # Apaga o arquivo temporário do servidor para economizar espaço
         os.remove(nome_arquivo)
         bot.delete_message(message.chat.id, aviso.message_id)
         
@@ -203,7 +198,7 @@ def analisar_imagem(message):
     except Exception as e:
         bot.reply_to(message, f"❌ Desculpe Alexandre, tive um problema ao tentar ler essa foto. Detalhe: {e}")
 
-# ======= 💬 CONVERSA NORMAL POR TEXTO (FIM DO ERRO 429) =======
+# ======= 💬 CONVERSA NORMAL POR TEXTO =======
 @bot.message_handler(content_types=['text'])
 def conversa_ia(message):
     if message.text in ['💡 Pedir Sugestão', '🍎 Relatório Nutricional']:
@@ -213,9 +208,8 @@ def conversa_ia(message):
     bot.send_chat_action(message.chat.id, 'typing')
     
     try:
-        # Mudado para 'gemini-1.5-flash' para estabilidade de cotas gratuitas por minuto
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-2.5-flash',
             contents=f"Você é o Fire iA, o assistente pessoal inteligente do Alexandre. Responda de forma direta, prestativa e amigável: {message.text}"
         )
         bot.reply_to(message, response.text)
