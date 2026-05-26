@@ -1,4 +1,3 @@
-```python
 import os
 import telebot
 from google import genai
@@ -265,4 +264,3 @@ def enviar_menu(message):
 
 if __name__ == '__main__':
     bot.infinity_polling()
-```
