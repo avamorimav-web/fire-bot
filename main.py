@@ -1,7 +1,6 @@
 import os
 import telebot
-from google import genai
-from google.genai import types
+from openai import OpenAI
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 import sqlite3
@@ -9,10 +8,10 @@ import requests
 
 # ======= CONFIGURAÇÕES INICIAIS =======
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
-GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
+OPENAI_KEY = os.environ.get('GEMINI_API_KEY') # Puxa a chave sk-... que você salvou no Fly.io
 
 bot = telebot.TeleBot(TOKEN)
-client = genai.Client(api_key=GEMINI_KEY)
+client = OpenAI(api_key=OPENAI_KEY)
 
 scheduler = BackgroundScheduler()
 scheduler.start()
@@ -21,7 +20,6 @@ scheduler.start()
 def init_db():
     conn = sqlite3.connect('fire_ia.db')
     cursor = conn.cursor()
-    # Tabela Financeira
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS finance (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +30,6 @@ def init_db():
             data TEXT
         )
     ''')
-    # Tabela de Lembretes
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS reminders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,7 +44,6 @@ def init_db():
 
 init_db()
 
-# ======= FUNÇÃO DE DISPARO DO ALARME =======
 def disparar_alarme(user_id, texto_lembrete, tipo_rep):
     try:
         mensagem_alarme = f"🔔 **ALARME ATIVO, ALEXANDRE!**\n\n📌 **Lembrete:** {texto_lembrete}\n🔄 **Repetição:** {tipo_rep}"
@@ -55,18 +51,15 @@ def disparar_alarme(user_id, texto_lembrete, tipo_rep):
     except Exception as e:
         print(f"Erro ao disparar alarme: {e}")
 
-# ======= TECLADO DE BOTÕES (MENU) =======
 def menu_principal():
     markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     btn_entrada = telebot.types.KeyboardButton('➕ Entrada')
     btn_saida = telebot.types.KeyboardButton('➖ Saída')
     btn_extrato = telebot.types.KeyboardButton('📊 Extrato Mensal')
     btn_lembrete = telebot.types.KeyboardButton('📅 Criar Lembrete')
-    btn_web = telebot.types.KeyboardButton('🌐 Pesquisa Web')
     
     markup.add(btn_entrada, btn_saida)
     markup.add(btn_extrato, btn_lembrete)
-    markup.add(btn_web)
     return markup
 
 # ======= FLUXO DO BOTÃO DE LEMBRETE REPETITIVO =======
@@ -100,7 +93,6 @@ def agendar_lembrete_repetitivo(message, tipo_rep):
         conn.commit()
         conn.close()
         
-        # Configura a repetição no APScheduler
         if tipo_rep == 'Todos os dias':
             scheduler.add_job(disparar_alarme, 'cron', hour=hora, minute=minuto, args=[message.chat.id, texto_lembrete, 'Diário'])
         elif tipo_rep == 'Toda semana':
@@ -118,31 +110,11 @@ def agendar_lembrete_repetitivo(message, tipo_rep):
     except:
         bot.reply_to(message, "❌ Erro no formato! Use `HH:MM Texto`", reply_markup=menu_principal())
 
-# ======= 🌐 BUSCADOR WEB (IA NAVEGANDO NA INTERNET) =======
-@bot.message_handler(func=lambda msg: msg.text == '🌐 Pesquisa Web')
-def iniciar_pesquisa_web(message):
-    msg = bot.reply_to(message, "🔍 O que você quer que eu pesquise ao vivo na internet agora?")
-    bot.register_next_step_handler(msg, executar_pesquisa_web)
-
-def executar_pesquisa_web(message):
-    bot.send_chat_action(message.chat.id, 'typing')
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=message.text,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())]
-            )
-        )
-        bot.reply_to(message, f"🌐 **Resultado da pesquisa ao vivo:**\n\n{response.text}", parse_mode="Markdown")
-    except Exception as e:
-        bot.reply_to(message, f"⚠️ Erro ao buscar na web: {e}")
-
-# ======= 🎙️ TRANSCRITOR DE ÁUDIO =======
+# ======= 🎙️ TRANSCRITOR DE ÁUDIO (OUVIR SUA VOZ) =======
 @bot.message_handler(content_types=['voice', 'audio'])
 def transcrever_audio(message):
     bot.send_chat_action(message.chat.id, 'typing')
-    aviso = bot.reply_to(message, "⏳ **Ouvindo seu áudio...** Processando a voz com o Gemini.")
+    aviso = bot.reply_to(message, "⏳ **Ouvindo seu áudio no ChatGPT...**")
     
     try:
         file_id = message.voice.file_id if message.voice else message.audio.file_id
@@ -155,56 +127,27 @@ def transcrever_audio(message):
         with open(nome_audio, 'wb') as f:
             f.write(response_file.content)
             
-        with open(nome_audio, 'rb') as f:
-            bytes_audio = f.read()
+        with open(nome_audio, "rb") as audio_file:
+            transcription = client.audio.transcriptions.create(
+                model="whisper-1", 
+                file=audio_file
+            )
             
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=[
-                types.Part.from_bytes(
-                    data=bytes_audio,
-                    mime_type='audio/ogg',
-                ),
-                "Você é o Fire iA. Transcreva exatamente o que foi dito neste áudio pelo Alexandre e, em seguida, responda ao que ele pediu de forma prestativa."
-            ]
-        )
-        
         os.remove(nome_audio)
-        bot.delete_message(message.chat.id, aviso.message_id)
-        bot.reply_to(message, f"🎙️ **O que eu entendi do seu áudio:**\n\n{response.text}")
         
-    except Exception as e:
-        bot.reply_to(message, f"❌ Não consegui entender o áudio. Detalhe: {e}")
-
-# ======= 📸 OLHOS DO FIRE IA: LEITURA DE FOTOS =======
-@bot.message_handler(content_types=['photo'])
-def analisar_imagem(message):
-    bot.send_chat_action(message.chat.id, 'typing')
-    aviso = bot.reply_to(message, "🔔 **Fire iA 'Olhos' Ativados!** Analisando imagem...")
-    try:
-        file_id = message.photo[-1].file_id
-        file_info = bot.get_file(file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        nome_arquivo = f"imagem_{message.chat.id}.jpg"
-        
-        with open(nome_arquivo, 'wb') as new_file:
-            new_file.write(downloaded_file)
-            
-        with open(nome_arquivo, 'rb') as f:
-            bytes_imagem = f.read()
-            
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=[
-                types.Part.from_bytes(data=bytes_imagem, mime_type='image/jpeg'),
-                "Você é o Professor Particular do Alexandre dentro do Fire iA. Leia atentamente a imagem do caderno, transcreva as perguntas encontradas e resolva cada uma delas passo a passo."
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Você é o Fire iA, o assistente pessoal do Alexandre. Responda ao comando dele de forma direta."},
+                {"role": "user", "content": transcription.text}
             ]
         )
-        os.remove(nome_arquivo)
+        
         bot.delete_message(message.chat.id, aviso.message_id)
-        bot.reply_to(message, response.text)
+        bot.reply_to(message, f"🎙️ **Ouvido:** _{transcription.text}_\n\n🤖 **Resposta:**\n{response.choices[0].message.content}")
+        
     except Exception as e:
-        bot.reply_to(message, f"❌ Erro ao ler foto: {e}")
+        bot.reply_to(message, f"❌ Erro ao processar áudio: {e}")
 
 # ======= FLUXOS DOS BOTÕES FINANCEIROS =======
 @bot.message_handler(func=lambda msg: msg.text in ['➕ Entrada', '➖ Saída'])
@@ -236,7 +179,7 @@ def ver_extrato(message):
     cursor.execute('SELECT tipo, valor, categoria FROM finance WHERE user_id = ?', (message.chat.id,))
     linhas = cursor.fetchall()
     conn.close()
-    if not linhas:
+    if not lines:
         bot.reply_to(message, "📊 Sem lançamentos!")
         return
     resumo = "📊 **SEU EXTRATO:**\n\n"
@@ -249,18 +192,21 @@ def ver_extrato(message):
 def conversa_ia(message):
     bot.send_chat_action(message.chat.id, 'typing')
     try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=f"Você é o Fire iA, o assistente pessoal inteligente do Alexandre. Responda de forma direta e amigável: {message.text}"
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Você é o Fire iA, o assistente pessoal inteligente do Alexandre. Responda de forma direta e amigável."},
+                {"role": "user", "content": message.text}
+            ]
         )
-        bot.reply_to(message, response.text)
+        bot.reply_to(message, response.choices[0].message.content)
     except Exception as e:
-        bot.reply_to(message, f"⚠️ Erro na IA: {e}")
+        bot.reply_to(message, f"⚠️ Erro na IA OpenAI: {e}")
 
 # ======= COMANDO START =======
 @bot.message_handler(commands=['start', 'menu'])
 def enviar_menu(message):
-    bot.reply_to(message, "🔥 **Fire iA Atualizado!** Escolha uma opção ou fale diretamente comigo:", reply_markup=menu_principal(), parse_mode="Markdown")
+    bot.reply_to(message, "🔥 **Fire iA turbinado com ChatGPT Ativo!** Escolha uma opção:", reply_markup=menu_principal(), parse_mode="Markdown")
 
 if __name__ == '__main__':
     bot.infinity_polling()
