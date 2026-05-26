@@ -1,4 +1,3 @@
 pyTelegramBotAPI
 openai
-apscheduler
 requests
