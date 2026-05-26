@@ -16,27 +16,28 @@ ID_ADMIN_ALEXANDRE = 5435085592
 
 # 2. INICIALIZAÇÃO DO BANCO DE DADOS
 def iniciar_banco():
-    conn = sqlite3.connect('fire_ia_data.db')
-    cursor = conn.cursor()
-    # Tabela de Finanças (Entradas e Saídas)
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS financas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tipo TEXT,
-            valor REAL,
-            data TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    # Tabela de Clientes da Franquia
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS clientes (
-            telegram_id INTEGER PRIMARY KEY,
-            nome TEXT,
-            status TEXT DEFAULT 'ativo'
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('fire_ia_data.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS financas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tipo TEXT,
+                valor REAL,
+                data TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS clientes (
+                telegram_id INTEGER PRIMARY KEY,
+                nome TEXT,
+                status TEXT DEFAULT 'ativo'
+            )
+        ''')
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Erro ao iniciar banco de dados: {e}")
 
 iniciar_banco()
 
@@ -45,28 +46,32 @@ iniciar_banco()
 # ----------------------------------------------------------------------
 @bot.message_handler(commands=['start'])
 def boas_vindas(message):
-    nome_usuario = message.from_user.first_name
-    
-    texto_boas_vindas = (
-        f"🔥 *Bem-vindo ao Fire iA, {nome_usuario}!* 🔥\n\n"
-        "Eu sou o seu assistente central de Inteligência Artificial. "
-        "A partir de agora, não existem botões na nossa tela: **nossa conversa é 100% natural!** "
-        "Você pode falar comigo por texto, mandar áudios ou enviar fotos.\n\n"
-        "🚀 *Olha só tudo o que eu posso fazer por você:* \n\n"
-        "📚 *Professor Particular:* Tire foto de qualquer tarefa de colégio ou faculdade (Matemática, Português, História, Física, etc.) e eu te dou a resposta com o passo a passo explicativo.\n"
-        "🎙️ *Comando por Voz:* Não quer digitar? Mande um áudio com a sua dúvida ou ordem que eu entendo perfeitamente.\n"
-        "💰 *Fluxo de Caixa:* Controle seu dinheiro direto no chat! Diga frases como 'Ganhei 280 reais' ou 'Anota saída de 50 reais' que eu arquivo no seu relatório financeiro.\n"
-        "🧮 *Super Calculadora:* Resolva qualquer tipo de conta, cálculo complexo, juros ou lógica na hora.\n"
-        "🔍 *Pesquisa na Web:* Pergunte sobre notícias, cotações ou atualizações do mundo que eu busco em tempo real.\n\n"
-        "Como posso te ajudar agora? É só mandar uma mensagem! 👇"
-    )
-    
-    bot.send_message(
-        message.chat.id, 
-        texto_boas_vindas, 
-        parse_mode="Markdown", 
-        reply_markup=telebot.types.ReplyKeyboardRemove()
-    )
+    try:
+        nome_usuario = message.from_user.first_name if message.from_user.first_name else "Cliente"
+        
+        texto_boas_vindas = (
+            f"🔥 *Bem-vindo ao Fire iA, {nome_usuario}!* 🔥\n\n"
+            "Eu sou o seu assistente central de Inteligência Artificial. "
+            "A partir de agora, não existem botões na nossa tela: **nossa conversa é 100% natural!** "
+            "Você pode falar comigo por texto, mandar áudios ou enviar fotos.\n\n"
+            "🚀 *Olha só tudo o que eu posso fazer por você:* \n\n"
+            "📚 *Professor Particular:* Tire foto de qualquer tarefa de colégio ou faculdade (Matemática, Português, História, Física, etc.) e eu te dou a resposta com o passo a passo explicativo.\n"
+            "🎙️ *Comando por Voz:* Não quer digitar? Mande um áudio com a sua dúvida ou ordem que eu entendo perfeitamente.\n"
+            "💰 *Fluxo de Caixa:* Controle seu dinheiro direto no chat! Diga frases como 'Ganhei 280 reais' ou 'Anota saída de 50 reais' que eu arquivo no seu relatório financeiro.\n"
+            "🧮 *Super Calculadora:* Resolva qualquer tipo de conta, cálculo complexo, juros ou lógica na hora.\n"
+            "🔍 *Pesquisa na Web:* Pergunte sobre notícias, cotações ou updates do mundo que eu busco em tempo real.\n\n"
+            "Como posso te ajudar agora? É só mandar uma mensagem! 👇"
+        )
+        
+        bot.send_message(
+            message.chat.id, 
+            texto_boas_vindas, 
+            parse_mode="Markdown", 
+            reply_markup=telebot.types.ReplyKeyboardRemove()
+        )
+    except Exception as e:
+        print(f"Erro no start: {e}")
+        bot.send_message(message.chat.id, "🔥 Bem-vindo ao Fire iA! O modo conversa natural está ativado. Pode falar comigo!", reply_markup=telebot.types.ReplyKeyboardRemove())
 
 # ----------------------------------------------------------------------
 # 👁️ FUNÇÃO 1: PROCESSAMENTO DE IMAGENS (FOTOS DE TAREFAS / COMPROVANTES)
@@ -103,6 +108,7 @@ def tratar_foto(message):
         )
         bot.reply_to(message, response.choices[0].message.content, reply_markup=telebot.types.ReplyKeyboardRemove())
     except Exception as e:
+        print(f"Erro ao processar foto: {e}")
         bot.reply_to(message, "🔥 Erro no meu sensor de visão. Pode enviar a foto novamente?")
 
 # ----------------------------------------------------------------------
@@ -133,6 +139,7 @@ def tratar_voz(message):
         tratar_texto(message)
         
     except Exception as e:
+        print(f"Erro ao processar voz: {e}")
         bot.reply_to(message, "🔥 Não consegui decifrar o áudio. Pode repetir ou digitar?")
 
 # ----------------------------------------------------------------------
@@ -167,6 +174,12 @@ def tratar_texto(message):
         bot.send_message(message.chat.id, response.choices[0].message.content, reply_markup=telebot.types.ReplyKeyboardRemove())
         
     except Exception as e:
+        print(f"Erro ao processar texto: {e}")
         bot.reply_to(message, "🔥 Meu núcleo de processamento encontrou uma instabilidade. Pode repetir?")
 
-bot.polling()
+# Execução contínua com auto-recuperação
+while True:
+    try:
+        bot.polling(none_stop=True, timeout=60)
+    except Exception as e:
+        print(f"Reiniciando polling devido ao erro: {e}")
