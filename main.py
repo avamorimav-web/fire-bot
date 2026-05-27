@@ -179,7 +179,7 @@ def pesquisar_internet(termo):
         res = requests.get(url, headers=headers, timeout=12)
         if res.status_code == 200:
             from bs4 import BeautifulSoup
-            soup = BeautifulSoup(res.text, 'lxml')
+            soup = BeautifulSoup(res.text, 'html.parser')
             resultados = []
             for item in soup.find_all('div', class_='result__body'):
                 snippet = item.find('a', class_='result__snippet')
@@ -485,4 +485,3 @@ def tratar_texto(message):
                     ret = agendar_lembrete(user_id, args.get("tarefa"), args.get("data_hora"))
                 elif f_name == "gerenciar_painel_adm":
                     if eh_admin == "SIM":
-                        re
