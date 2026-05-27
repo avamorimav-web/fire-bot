@@ -127,18 +127,33 @@ def trava_seguranca(funcao):
 # ======================================================================
 def pesquisar_internet(termo):
     try:
-        url = f"https://html.duckduckgo.com/html/?q={termo}"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        res = requests.get(url, headers=headers, timeout=10)
+        url = f"https://html.duckduckgo.com/html/?q={requests.utils.quote(termo)}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        res = requests.get(url, headers=headers, timeout=12)
         if res.status_code == 200:
             from bs4 import BeautifulSoup
-            soup = BeautifulSoup(res.text, 'html.parser')
-            snippets = [d.get_text() for d in soup.find_all('div', class_='result__snippet')][:4]
-            if snippets:
-                return "\n\n".join(snippets)
-        return "Nenhum resultado recente encontrado."
+            soup = BeautifulSoup(res.text, 'lxml')
+            
+            resultados = []
+            for item in soup.find_all('div', class_='result__body'):
+                snippet = item.find('a', class_='result__snippet')
+                if snippet:
+                    resultados.append(snippet.get_text().strip())
+            
+            if resultados:
+                return "\n\n".join(resultados[:4])
+                
+        wiki_url = f"https://pt.wikipedia.org/w/api.php?action=query&list=search&srsearch={requests.utils.quote(termo)}&format=json"
+        wiki_res = requests.get(wiki_url, timeout=10).json()
+        if "query" in wiki_res and wiki_res["query"]["search"]:
+            snippets = [item["snippet"].replace('<span class="searchmatch">', '').replace('</span>', '') for item in wiki_res["query"]["search"]]
+            return "Resultados alternativos (Wiki/Web):\n\n" + "\n\n".join(snippets[:3])
+            
+        return f"Não foi possível extrair dados em tempo real para: '{termo}'. Use seu conhecimento prévio para responder da melhor forma possível."
     except Exception as e:
-        return f"Erro na pesquisa web: {e}"
+        return f"Erro ao acessar a rede: {e}. Responda com base no seu conhecimento operacional."
 
 def gerenciar_financa(user_id, tipo, valor, descricao):
     try:
@@ -161,7 +176,7 @@ def consultar_extrato(user_id):
         linhas = cursor.fetchall()
         conn.close()
         
-        if not lines:
+        if not linhas:
             return "📊 Nenhuma movimentação registrada."
             
         extrato = "📊 *Seu Extrato:* \n\n"
@@ -230,7 +245,7 @@ FERRAMENTAS_FIRE = [
         "type": "function",
         "function": {
             "name": "pesquisar_internet",
-            "description": "Busca informações em tempo real na internet.",
+            "description": "Busca informações atualizadas e em tempo real na internet.",
             "parameters": {
                 "type": "object",
                 "properties": {"termo": {"type": "string"}},
@@ -373,10 +388,9 @@ def tratar_texto(message):
                 f"O usuário atual é o Admin Alexandre? {eh_admin} (ID: {user_id}).\n"
                 f"DATA DO SERVIDOR: {dt_atual}.\n\n"
                 "Regras:\n"
-                "1. Use tools nativas para ações (web, finanças, lembretes, adm).\n"
+                "1. Sempre acione a ferramenta 'pesquisar_internet' quando o usuário pedir fatos recentes, notícias do dia ou buscas externas.\n"
                 "2. 'gerenciar_painel_adm' é estritamente restrito ao criador Alexandre.\n"
-                "3. Se buscar na web, use os dados sem alegar limitações cronológicas antigas.\n"
-                "4. Responda em Markdown estruturado."
+                "3. Responda em Markdown estruturado e de forma natural."
             )
         }
         
