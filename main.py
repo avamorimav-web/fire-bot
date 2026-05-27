@@ -4,8 +4,6 @@ import json
 import requests
 import telebot
 import pytz
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from openai import OpenAI
 from datetime import datetime
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -15,9 +13,8 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # ======================================================================
 TOKEN_TELEGRAM = os.environ.get('TELEGRAM_TOKEN')
 CHAVE_OPENAI = os.environ.get('GEMINI_API_KEY')
-PORTA = int(os.environ.get('PORT', 8080))
 
-print("🔥 [SISTEMA] Iniciando Fire iA v6.1 - Comercial (Admin: @Alexandreav)...")
+print("🔥 [SISTEMA] Iniciando Fire iA v6.1 - Railway Edition...")
 
 if not TOKEN_TELEGRAM:
     print("❌ [ERRO CRÍTICO] A variável de ambiente 'TELEGRAM_TOKEN' não foi configurada!")
@@ -483,4 +480,13 @@ def tratar_texto(message):
         if calls:
             ctx.append(msg_obj)
             for call in calls:
-                f_name = call.functio
+                f_name = call.function.name
+                try:
+                    args = json.loads(call.function.arguments)
+                except Exception:
+                    args = {}
+                ret = ""
+                if f_name == "pesquisar_internet":
+                    ret = pesquisar_internet(args.get("termo", ""))
+                elif f_name == "gerenciar_financa":
+                    ret = gerenciar_financa(use
