@@ -1,3 +1,4 @@
+
 import os
 import telebot
 import openai
@@ -15,13 +16,12 @@ openai.api_key = CHAVE_OPENAI
 
 # 🔴 SEUS DADOS ADM
 USUARIOS_PERMITIDOS = [5435085592]  # Seu ID de Administrador
-USUARIO_DONO = "@Alexandreav"
+USUARIO_DONO = "@Alexandreav"       # Seu usuário para contato
 
-# BANCO DE DADOS ATUALIZADO
+# BANCO DE DADOS
 def conectar_banco():
     conn = sqlite3.connect("clientes.db")
     cursor = conn.cursor()
-    # Cria a tabela com os novos campos que você pediu
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS clientes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,21 +128,58 @@ def analisar_foto_e_tarefa(url_da_foto):
 # 4. CONTROLADORES DO TELEGRAM
 # =====================================================================
 
+# 🛠️ COMANDO /START INTELIGENTE E CORRIGIDO
 @bot.message_handler(commands=['start', 'help'])
 def enviar_boas_vindas(message):
-    texto = (
-        f"Olá, {message.from_user.first_name}! 🔥\n\n"
-        f"Para cadastrar um cliente completo, digite exatamente assim:\n"
-        f"`Cadastrar Nome - Telefone - ID - Dias`\n\n"
-        f"Exemplo:\n"
-        f"`Cadastrar João Silva - 11999999999 - 123456789 - 30`\n\n"
-        f"Toque em **Painel** para ver a lista."
-    )
-    bot.send_message(message.chat.id, texto, parse_mode="Markdown")
+    user_id = message.from_user.id
+    primeiro_nome = message.from_user.first_name
+    
+    # 1. Se for VOCÊ (Administrador) acessando o robô:
+    if user_id in USUARIOS_PERMITIDOS:
+        texto_adm = (
+            f"Olá, {primeiro_nome}! 🔥\n\n"
+            f"Você está no modo **Administrador**.\n"
+            f"Para cadastrar um cliente completo, digite exatamente assim:\n"
+            f"`Cadastrar Nome - Telefone - ID - Dias`\n\n"
+            f"Exemplo:\n"
+            f"`Cadastrar João Silva - 11999999999 - 123456789 - 30`\n\n"
+            f"Para ver a sua lista completa de clientes, digite ou fale: **Painel**"
+        )
+        bot.send_message(message.chat.id, texto_adm, parse_mode="Markdown")
+        return
+
+    # Verifica se o cliente já está cadastrado no banco de dados
+    conn = sqlite3.connect("clientes.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM clientes WHERE telegram_id = ?", (user_id,))
+    cliente_existe = cursor.fetchone()
+    conn.close()
+
+    # 2. Se for um CLIENTE CADASTRADO E LIBERADO:
+    if cliente_existe:
+        texto_cliente = (
+            f"Olá, {primeiro_nome}! 🔥\n\n"
+            f"Seja muito bem-vindo(a) de volta ao **Fire iA**!\n"
+            f"Estou pronto para responder seus textos, áudios e resolver tarefas por foto. "
+            f"Pode enviar sua mensagem! 🚀"
+        )
+        bot.send_message(message.chat.id, texto_cliente, parse_mode="Markdown")
+        
+    # 3. Se for um USUÁRIO NOVO (Bloqueia mostrando a saudação, o ID e o seu contato):
+    else:
+        texto_bloqueio = (
+            f"Olá, {primeiro_nome}! 🔥\n\n"
+            f"Seja muito bem-vindo(a) ao **Fire iA**!\n"
+            f"Eu sou um assistente virtual avançado com inteligência artificial para textos, áudios e fotos.\n\n"
+            f"⚠️ **SISTEMA PRIVADO** ⚠️\n"
+            f"Identificamos que o seu perfil ainda não está liberado no nosso sistema.\n\n"
+            f"🆔 **Seu ID do Telegram:** `{user_id}`\n\n"
+            f"Para liberar o seu acesso agora mesmo, copie o seu ID acima e envie para o administrador clicando aqui: {USUARIO_DONO} 👈"
+        )
+        bot.send_message(message.chat.id, texto_bloqueio, parse_mode="Markdown")
 
 @bot.message_handler(content_types=['photo'])
 def tratar_foto(message):
-    # Verifica se quem mandou a foto é você (Administrador) ou um cliente cadastrado no banco
     user_id = message.from_user.id
     
     conn = sqlite3.connect("clientes.db")
@@ -206,7 +243,6 @@ def tratar_texto(message):
     user_id = message.from_user.id
     texto_usuario = message.text
 
-    # Verifica se é cliente autorizado no banco
     conn = sqlite3.connect("clientes.db")
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM clientes WHERE telegram_id = ?", (user_id,))
@@ -217,15 +253,12 @@ def tratar_texto(message):
         verificar_e_bloquear_intruso(message)
         return
 
-    # Comando apenas para você (ADM) ver a lista de clientes
     if texto_usuario.lower() == "painel" and user_id in USUARIOS_PERMITIDOS:
         bot.reply_to(message, listar_clientes_banco(), parse_mode="Markdown")
         return
 
-    # Comando de texto para você (ADM) cadastrar o cliente completo
     if texto_usuario.lower().startswith("cadastrar") and user_id in USUARIOS_PERMITIDOS:
         try:
-            # Separa os dados pelos traços (-)
             dados = texto_usuario.replace("Cadastrar", "").replace("cadastrar", "").strip()
             partes = dados.split("-")
             
@@ -246,10 +279,10 @@ def tratar_texto(message):
 def verificar_e_bloquear_intruso(message):
     id_intruso = message.from_user.id
     texto_bloqueio = (
-        f"❌ **ACESSO NEGADO** ❌\n\n"
-        f"Você não está cadastrado no sistema do Robô de Fogo.\n"
-        f"**Seu ID:** `{id_intruso}`\n\n"
-        f"Para solicitar o seu acesso envie uma mensagem para {USUARIO_DONO}."
+        f"❌ **ACESSO RESTRITO** ❌\n\n"
+        f"Para fazer perguntas ou enviar fotos, você precisa liberar o seu perfil.\n\n"
+        f"🆔 **Seu ID:** `{id_intruso}`\n"
+        f"👤 **Administrador:** {USUARIO_DONO}"
     )
     bot.send_message(message.chat.id, texto_bloqueio, parse_mode="Markdown")
 
