@@ -13,52 +13,65 @@ CHAVE_OPENAI = os.environ.get("OPENAI_API_KEY")
 bot = telebot.TeleBot(TOKEN_TELEGRAM)
 openai.api_key = CHAVE_OPENAI
 
-# 🔴 SEUS DADOS ADM ATUALIZADOS
+# 🔴 SEUS DADOS ADM
 USUARIOS_PERMITIDOS = [5435085592]  # Seu ID de Administrador
 USUARIO_DONO = "@Alexandreav"  # Seu usuário para contato
+
+# Instrução mestre para a IA agir corretamente e falar apenas português limpo
+PROMPT_SISTEMA = (
+    "Você é o Robô de Fogo Avançado, uma inteligência artificial prestativa, direta e focada. "
+    "Diretrizes obrigatórias:\n"
+    "1. Responda SEMPRE em português do Brasil, de forma natural e humana.\n"
+    "2. NUNCA use formatação LaTeX ou símbolos matemáticos complexos como '\\[' ou '\\times'. Use texto normal (ex: 7000 x 17 = 119000).\n"
+    "3. Preste muita atenção aos números informados pelo usuário para não errar ordens de grandeza (ex: '7 mil' significa 7.000 e não 7 milhões).\n"
+    "4. Se o usuário enviar uma foto de tarefa escolar, não apenas descreva o livro: RESOLVA as questões visíveis passo a passo."
+)
 
 # =====================================================================
 # 2. INTELIGÊNCIA ARTIFICIAL (Texto, Voz e Fotos/Tarefas)
 # =====================================================================
 
 def responder_com_chatgpt(texto):
-    """Responde mensagens de texto normais usando o ChatGPT (Compatível com nova e antiga API)"""
-    try:
-        # Tenta o formato da API Nova (v1.0.0+)
-        if hasattr(openai, "OpenAI") or os.environ.get("OPENAI_API_KEY"):
-            try:
-                from openai import OpenAI
-                client = OpenAI(api_key=CHAVE_OPENAI)
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": texto}]
-                )
-                return response.choices[0].message.content
-            except:
-                pass
-        
-        # Se falhar, usa o formato da API Antiga
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": texto}]
-        )
-        return response.choices[0].message['content']
-    except Exception as e:
-        print(f"Erro OpenAI Texto: {e}")
-        return f"Erro na IA: {e}"  # Agora o robô vai te dizer o erro real no Telegram!
-
-def analisar_foto_e_tarefa(url_da_foto):
-    """Lê fotos e resolve tarefas escolares enviadas por imagem"""
+    """Responde mensagens de texto normais usando o ChatGPT com a calibragem correta"""
     try:
         from openai import OpenAI
         client = OpenAI(api_key=CHAVE_OPENAI)
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
+                {"role": "system", "content": PROMPT_SISTEMA},
+                {"role": "user", "content": texto}
+            ]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        # Se a biblioteca nova falhar por falta de atualização no servidor, usa o método antigo seguro
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": PROMPT_SISTEMA},
+                    {"role": "user", "content": texto}
+                ]
+            )
+            return response.choices[0].message['content']
+        except Exception as erro_antigo:
+            print(f"Erro OpenAI Texto: {erro_antigo}")
+            return "Tive um probleminha para processar o texto agora. Pode tentar de novo?"
+
+def analisar_foto_e_tarefa(url_da_foto):
+    """Lê fotos e resolve tarefas escolares enviadas por imagem sem enrolação"""
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=CHAVE_OPENAI)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": PROMPT_SISTEMA},
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Analise esta imagem. Se for uma tarefa de colégio ou pergunta, resolva-a passo a passo detalhadamente. Se for apenas uma foto comum, descreva o que vê."},
+                        {"type": "text", "text": "Analise detalhadamente os textos e perguntas nesta imagem. Resolva e responda cada uma das tarefas ou questões escolares encontradas de forma clara e passo a passo em português."},
                         {"type": "image_url", "image_url": {"url": url_da_foto}}
                     ]
                 }
