@@ -437,3 +437,4 @@ def tratar_texto(message):
                 elif nome_funcao == "gerenciar_financa":
                     resultado_acao = gerenciar_financa(user_id, argumentos.get("tipo"), argumentos.get("valor"), argumentos.get("descricao"))
                 elif nome_funcao == "consultar_extrato":
+                    
