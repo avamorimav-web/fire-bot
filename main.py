@@ -17,14 +17,14 @@ openai.api_key = CHAVE_OPENAI
 USUARIOS_PERMITIDOS = [5435085592]  # Seu ID de Administrador
 USUARIO_DONO = "@Alexandreav"  # Seu usuário para contato
 
-# Instrução mestre para a IA agir corretamente e falar apenas português limpo
+# Instrução mestre otimizada para respostas rápidas, sem enrolação e sem LaTeX
 PROMPT_SISTEMA = (
-    "Você é o Robô de Fogo Avançado, uma inteligência artificial prestativa, direta e focada. "
-    "Diretrizes obrigatórias:\n"
-    "1. Responda SEMPRE em português do Brasil, de forma natural e humana.\n"
-    "2. NUNCA use formatação LaTeX ou símbolos matemáticos complexos como '\\[' ou '\\times'. Use texto normal (ex: 7000 x 17 = 119000).\n"
-    "3. Preste muita atenção aos números informados pelo usuário para não errar ordens de grandeza (ex: '7 mil' significa 7.000 e não 7 milhões).\n"
-    "4. Se o usuário enviar uma foto de tarefa escolar, não apenas descreva o livro: RESOLVA as questões visíveis passo a passo."
+    "Você é o Robô de Fogo Avançado, uma IA prestativa, curta e muito direta. "
+    "Diretrizes obrigatórias de comportamento:\n"
+    "1. Responda SEMPRE em português do Brasil, de forma natural.\n"
+    "2. Seja o mais resumido possível. Vá direto ao ponto e evite textos longos.\n"
+    "3. NUNCA use formatação LaTeX ou símbolos matemáticos complexos como '\\[' ou '\\times'. Use texto normal (ex: 7000 x 17 = 119000).\n"
+    "4. Ao receber foto de tarefa escolar, dê apenas as respostas das questões de forma curta e objetiva, sem fazer introduções ou explicações longas."
 )
 
 # =====================================================================
@@ -45,7 +45,6 @@ def responder_com_chatgpt(texto):
         )
         return response.choices[0].message.content
     except Exception as e:
-        # Se a biblioteca nova falhar por falta de atualização no servidor, usa o método antigo seguro
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-4o-mini",
@@ -60,7 +59,7 @@ def responder_com_chatgpt(texto):
             return "Tive um probleminha para processar o texto agora. Pode tentar de novo?"
 
 def analisar_foto_e_tarefa(url_da_foto):
-    """Lê fotos e resolve tarefas escolares enviadas por imagem sem enrolação"""
+    """Lê fotos e resolve tarefas escolares direto ao ponto, sem enrolar"""
     try:
         from openai import OpenAI
         client = OpenAI(api_key=CHAVE_OPENAI)
@@ -71,7 +70,7 @@ def analisar_foto_e_tarefa(url_da_foto):
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Analise detalhadamente os textos e perguntas nesta imagem. Resolva e responda cada uma das tarefas ou questões escolares encontradas de forma clara e passo a passo em português."},
+                        {"type": "text", "text": "Resolva as questões desta imagem de forma super resumida, direta e concisa. Apenas dê as respostas das perguntas encontrados em português do Brasil."},
                         {"type": "image_url", "image_url": {"url": url_da_foto}}
                     ]
                 }
