@@ -12,7 +12,7 @@ from datetime import datetime
 TOKEN_TELEGRAM = os.environ.get('TELEGRAM_TOKEN')
 CHAVE_OPENAI = os.environ.get('GEMINI_API_KEY') 
 
-print("🔥 [SISTEMA] Inicializando Fire iA v4 - Edição Definitiva Ultra-Robusta...")
+print("🔥 [SISTEMA] Inicializando Fire iA v4 - Edição Administrador Blindada...")
 
 bot = telebot.TeleBot(TOKEN_TELEGRAM)
 client = OpenAI(api_key=CHAVE_OPENAI)
@@ -68,7 +68,7 @@ def iniciar_banco():
         ''')
         conn.commit()
         conn.close()
-        print("🔥 [BANCO DE DADOS] Estrutura verificada e pronta para voar alto.")
+        print("🔥 [BANCO DE DADOS] Estrutura verificada com sucesso.")
     except Exception as e:
         print(f"❌ [ERRO BANCO] Falha crítica ao iniciar banco: {e}")
 
@@ -100,17 +100,16 @@ def buscar_memoria_usuario(user_id, limite=15):
         return []
 
 # ----------------------------------------------------------------------
-# 4. DECORADOR: TRAVA DE SEGURANÇA MÁXIMA (BLINDAGEM NATIVA)
+# 4. DECORADOR: TRAVA DE SEGURANÇA MÁXIMA
 # ----------------------------------------------------------------------
 def trava_seguranca(funcao):
     def wrapper(message, *args, **kwargs):
         user_id = message.from_user.id
         
-        # Se for o Admin Alexandre, acesso garantido e imediato
+        # Se for o Admin Alexandre, acesso total garantido
         if user_id == ID_ADMIN_ALEXANDRE:
             return funcao(message, *args, **kwargs)
             
-        # Caso contrário, verifica permissão no banco de clientes
         try:
             conn = sqlite3.connect('fire_ia_data.db')
             cursor = conn.cursor()
@@ -123,11 +122,10 @@ def trava_seguranca(funcao):
         except Exception as e:
             print(f"❌ [ERRO SEGURANÇA] Falha ao checar permissões: {e}")
             
-        # Resposta padrão para perfis não autorizados ou bloqueados
         msg_bloqueio = (
             "❌ *Acesso Restrito!*\n\n"
             "Seu perfil não está autorizado a utilizar o sistema do **Fire iA**.\n"
-            "Para solicitar a sua liberação, envie o seu número de identificação abaixo para o Administrador:\n\n"
+            "Envie seu ID para o Administrador solicitar a liberação:\n\n"
             f"🆔 *Seu ID:* `{user_id}`"
         )
         bot.send_message(message.chat.id, msg_bloqueio, parse_mode="Markdown")
@@ -135,7 +133,7 @@ def trava_seguranca(funcao):
     return wrapper
 
 # ----------------------------------------------------------------------
-# 5. MOTORES DE FUNÇÃO (AÇÕES INTERNAS DO SISTEMA)
+# 5. MOTORES DE FUNÇÃO (AÇÕES DO SISTEMA)
 # ----------------------------------------------------------------------
 def pesquisar_internet(termo):
     try:
@@ -148,7 +146,7 @@ def pesquisar_internet(termo):
             snippets = [div.get_text() for div in soup.find_all('div', class_='result__snippet')][:4]
             if snippets:
                 return "\n\n".join(snippets)
-        return "Nenhum resultado recente foi encontrado em tempo real para esta busca."
+        return "Nenhum resultado recente foi encontrado na internet para esta busca."
     except Exception as e:
         return f"Falha de conexão ao pesquisar na web: {e}"
 
@@ -161,7 +159,7 @@ def gerenciar_financa(user_id, tipo, valor, descricao):
                        (user_id, tipo.upper(), float(valor), descricao, data_atual))
         conn.commit()
         conn.close()
-        return f"💰 *[Sucesso]* R$ {float(valor):.2f} registrado com sucesso como {tipo.upper()} ({descricao})."
+        return f"💰 *[Sucesso]* R$ {float(valor):.2f} registrado como {tipo.upper()} ({descricao})."
     except Exception as e:
         return f"❌ Erro interno ao salvar movimentação financeira: {e}"
 
@@ -174,7 +172,7 @@ def consultar_extrato(user_id):
         conn.close()
         
         if not linhas: 
-            return "📊 Você ainda não possui movimentações financeiras registradas no sistema."
+            return "📊 Você ainda não possui movimentações financeiras registradas."
             
         extrato = "📊 *Seu Extrato Financeiro Atualizado:*\n\n"
         total_entrada = total_saida = 0
@@ -216,16 +214,16 @@ def gerenciar_painel_adm(comando, id_alvo, nome_alvo=None):
                 ON CONFLICT(telegram_id) DO UPDATE SET status='ativo', nome=COALESCE(?, nome)
             ''', (id_alvo, nome_alvo, nome_alvo))
             conn.commit()
-            msg = f"🟢 *Acesso Liberado!* O usuário *{nome_alvo}* (ID: `{id_alvo}`) agora está ativo."
+            msg = f"🟢 *Acesso Liberado!* O usuário *{nome_alvo}* (ID: `{id_alvo}`) agora está ativo no Fire iA."
         elif comando == "BLOQUEAR":
             cursor.execute('UPDATE clientes SET status="bloqueado" WHERE telegram_id=?', (id_alvo,))
             conn.commit()
-            msg = f"🔴 *Acesso Revogado!* O ID `{id_alvo}` foi bloqueado e impedido de usar a IA."
+            msg = f"🔴 *Acesso Revogado!* O ID `{id_alvo}` foi bloqueado pelo Administrador."
         elif comando == "LISTAR":
             cursor.execute('SELECT telegram_id, nome, status FROM clientes')
             linhas = cursor.fetchall()
             if not linhas:
-                msg = "📋 Nenhum cliente registrado na base de dados até o momento."
+                msg = "📋 Nenhum cliente cadastrado na base de dados até o momento."
             else:
                 msg = "📋 *Painel de Clientes Autorizados (Fire iA):*\n\n"
                 for tid, nome, status in linhas:
@@ -235,7 +233,7 @@ def gerenciar_painel_adm(comando, id_alvo, nome_alvo=None):
         conn.close()
         return msg
     except Exception as e:
-        return f"❌ Erro no painel administrativo: {e}"
+        return f"❌ Erro executando comando no painel administrativo: {e}"
 
 # ----------------------------------------------------------------------
 # 6. DEFINIÇÃO NATIVA DAS TOOLS DA API DA OPENAI (FUNCTION CALLING)
@@ -245,7 +243,7 @@ FERRAMENTAS_FIRE = [
         "type": "function",
         "function": {
             "name": "pesquisar_internet",
-            "description": "Busca informações atualizadas em tempo real na internet sobre notícias, cotações, fatos atuais ou dúvidas gerais.",
+            "description": "Busca informações em tempo real na internet sobre notícias, cotações, fatos atuais ou dúvidas gerais.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -259,7 +257,7 @@ FERRAMENTAS_FIRE = [
         "type": "function",
         "function": {
             "name": "gerenciar_financa",
-            "description": "Registra uma nova movimentação monetária de entrada ou saída no fluxo de caixa pessoal.",
+            "description": "Registra uma nova movimentação monetária de entrada ou saída no fluxo de caixa.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -283,7 +281,7 @@ FERRAMENTAS_FIRE = [
         "type": "function",
         "function": {
             "name": "agendar_lembrete",
-            "description": "Agenda uma tarefa, aviso ou compromisso para o usuário no banco de dados do sistema.",
+            "description": "Agenda uma tarefa, aviso ou compromisso para o usuário no sistema.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -322,11 +320,11 @@ def boas_vindas(message):
     nome = message.from_user.first_name if message.from_user.first_name else "Cliente"
     texto = (
         f"🔥 *Bem-vindo ao Fire iA, {nome}!* 🔥\n\n"
-        "Eu sou o seu assistente central de Inteligência Artificial, operando **100% por conversa natural**, sem botões poluindo a tela! Tenho memória de contexto integrada e as seguintes funções prontas:\n\n"
+        "Eu sou o seu assistente central de Inteligência Artificial, operando **100% por conversa natural**! Tenho as seguintes funções prontas:\n\n"
         "📚 *Professor Particular:* Envie fotos de qualquer lição ou conta para ver a resolução passo a passo.\n"
         "🧮 *Super Calculadora:* Execute contas matemáticas complexas e lógicas instantaneamente.\n"
         "🎙️ *Comandos por Voz:* Fale naturalmente por áudio que eu entendo e executo tudo.\n"
-        "💰 *Fluxo de Caixa:* Registre seus ganhos e gastos de forma simples e peça seu 'extrato mensal'.\n"
+        "💰 *Fluxo de Caixa:* Registre seus ganhos e gastos de forma simples e peça seu extrato.\n"
         "⏰ *Lembretes:* Peça para eu agendar lembretes e tarefas importantes.\n"
         "🔍 *Pesquisa na Web:* Consulte notícias, cotações ou fatos atuais em tempo real na internet.\n\n"
         "Como posso te ajudar agora? Pode falar!"
@@ -342,7 +340,7 @@ def tratar_foto(message):
         file_info = bot.get_file(file_id)
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
         
-        prompt_visao = "Você é o Fire iA. Analise detalhadamente a imagem recebida. Se for um exercício, resolva com o passo a passo completo. Se for um documento ou objeto, descreva perfeitamente."
+        prompt_visao = "Você é o Fire iA. Analise detalhadamente a imagem recebida. Se for um exercício, resolva com o passo a passo completo."
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -351,7 +349,7 @@ def tratar_foto(message):
         bot.reply_to(message, response.choices[0].message.content)
     except Exception as e:
         print(f"❌ [ERRO VISÃO] {e}")
-        bot.reply_to(message, "🔥 Houve um erro temporário ao decodificar os elementos desta imagem.")
+        bot.reply_to(message, "🔥 Houve um erro temporário ao analisar esta imagem.")
 
 @bot.message_handler(content_types=['voice'])
 @trava_seguranca
@@ -370,13 +368,11 @@ def tratar_voz(message):
             transcricao = client.audio.transcriptions.create(model="whisper-1", file=audio_file)
             
         os.remove(nome_arquivo)
-        
-        # Injeta o texto transcrito no fluxo padrão de mensagens do bot
         message.text = transcricao.text
         tratar_texto(message)
     except Exception as e:
         print(f"❌ [ERRO VOZ] {e}")
-        bot.reply_to(message, "🔥 Ocorreu uma falha ao processar e compreender o seu áudio.")
+        bot.reply_to(message, "🔥 Ocorreu uma falha ao processar o seu áudio.")
 
 @bot.message_handler(content_types=['text'])
 @trava_seguranca
@@ -391,25 +387,24 @@ def tratar_texto(message):
         salvar_na_memoria(user_id, "user", message.text)
         historico = buscar_memoria_usuario(user_id, limite=15)
         
-        # Sistema de Prompt Base Customizado
         prompt_sistema = {
             "role": "system",
             "content": (
-                f"Você é o Fire iA, uma Inteligência Artificial poderosa e refinada.\n"
-                f"O usuário atual com quem você fala é o Admin Alexandre? {eh_admin} (ID Telegram: {user_id}).\n"
-                f"Sempre que se referir ao Admin Alexandre, saiba que ele é o seu criador, trate-o com respeito de desenvolvedor.\n"
-                f"DATA E HORA DO SERVIDOR (Use como referência absoluta de tempo): {data_hora_atual}.\n\n"
-                "Instruções Importantes:\n"
-                "1. Você opera por conversa e linguagem natural.\n"
-                "2. Você possui ferramentas nativas (tools) para pesquisar na web, gerenciar finanças e salvar lembretes. Use-as sempre que necessário.\n"
-                "3. Se a ferramenta 'pesquisar_internet' retornar dados, use-os como prioridade absoluta para formular sua resposta e NUNCA diga que sua base de conhecimento está limitada ao passado.\n"
-                "4. Se o usuário perguntar se você consegue buscar na internet, execute a ferramenta de busca ou diga que SIM, você tem acesso em tempo real."
+                f"Você é o Fire iA, uma Inteligência Artificial poderosa desenvolvida pelo seu criador, o Admin Alexandre.\n"
+                f"O usuário atual na conversa é o Admin Alexandre? {eh_admin} (ID Telegram: {user_id}).\n"
+                f"DATA E HORA DO SERVIDOR: {data_hora_atual}.\n\n"
+                "Instruções:\n"
+                "1. Você opera por conversa natural.\n"
+                "2. Use as ferramentas nativas (tools) sempre que necessário (pesquisar internet, finanças, lembretes, gerenciar_painel_adm).\n"
+                "3. A ferramenta 'gerenciar_painel_adm' serve para Ativar, Bloquear ou Listar clientes e é de uso EXCLUSIVO do Admin Alexandre.\n"
+                "4. Se o usuário atual NÃO for o Admin Alexandre e tentar gerenciar o painel, a ferramenta avisará que ele não tem permissão.\n"
+                "5. Se a busca web trouxer dados, use-os e nunca diga que seu conhecimento está limitado a 2023.\n"
+                "6. Responda diretamente em Markdown sem enrolação."
             )
         }
         
         mensagens_completas = [prompt_sistema] + historico
         
-        # Primeira chamada à API para analisar intenção e acionar as ferramentas
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=mensagens_completas,
@@ -420,9 +415,8 @@ def tratar_texto(message):
         resposta_mensagem = response.choices[0].message
         tool_calls = resposta_mensagem.tool_calls
         
-        # Execução dinâmica caso a IA decida usar alguma ferramenta (Tool)
         if tool_calls:
-            print(f"📦 [TOOLS] O Fire iA ativou {len(tool_calls)} ferramenta(s) integrada(s).")
+            print(f"📦 [TOOLS] Ativando {len(tool_calls)} ferramenta(s).")
             mensagens_completas.append(resposta_mensagem)
             
             for tool_call in tool_calls:
@@ -430,10 +424,9 @@ def tratar_texto(message):
                 argumentos = json.loads(tool_call.function.arguments)
                 resultado_acao = ""
                 
+                # Execução Direta Segura
                 if nome_funcao == "pesquisar_internet":
                     resultado_acao = pesquisar_internet(argumentos.get("termo"))
                 elif nome_funcao == "gerenciar_financa":
                     resultado_acao = gerenciar_financa(user_id, argumentos.get("tipo"), argumentos.get("valor"), argumentos.get("descricao"))
-                elif nome_funcao == "consultar_extrato":
-                    resultado_acao = consultar_extrato(user_id)
-                elif nome_funcao == "agendar_lembrete":
+                elif nome_funcao == "consultar_extrato
