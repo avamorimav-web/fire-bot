@@ -106,7 +106,7 @@ def trava_seguranca(funcao):
     def wrapper(message, *args, **kwargs):
         user_id = message.from_user.id
         
-        # Se for o Administrador Alexandre, acesso garantido e imediato
+        # Se for o Admin Alexandre, acesso garantido e imediato
         if user_id == ID_ADMIN_ALEXANDRE:
             return funcao(message, *args, **kwargs)
             
@@ -385,14 +385,13 @@ def tratar_texto(message):
     try:
         bot.send_chat_action(message.chat.id, 'typing')
         
-        # Coleta e define variáveis de ambiente em tempo real
         eh_admin = "SIM" if user_id == ID_ADMIN_ALEXANDRE else "NÃO"
         data_hora_atual = datetime.now().strftime("%A, %d de %B de %Y - %H:%M:%S")
         
         salvar_na_memoria(user_id, "user", message.text)
         historico = buscar_memoria_usuario(user_id, limite=15)
         
-        # Sistema de Prompt Base Ultra-Focado
+        # Sistema de Prompt Base Customizado
         prompt_sistema = {
             "role": "system",
             "content": (
@@ -410,7 +409,7 @@ def tratar_texto(message):
         
         mensagens_completas = [prompt_sistema] + historico
         
-        # Primeira chamada à API para analisar intenção e acionar tools
+        # Primeira chamada à API para analisar intenção e acionar as ferramentas
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=mensagens_completas,
@@ -421,10 +420,9 @@ def tratar_texto(message):
         resposta_mensagem = response.choices[0].message
         tool_calls = resposta_mensagem.tool_calls
         
-        # Execução dinâmica caso a IA decida usar alguma Tool
+        # Execução dinâmica caso a IA decida usar alguma ferramenta (Tool)
         if tool_calls:
             print(f"📦 [TOOLS] O Fire iA ativou {len(tool_calls)} ferramenta(s) integrada(s).")
-            # Adiciona a mensagem que pediu a ferramenta ao histórico interno da API
             mensagens_completas.append(resposta_mensagem)
             
             for tool_call in tool_calls:
@@ -437,4 +435,5 @@ def tratar_texto(message):
                 elif nome_funcao == "gerenciar_financa":
                     resultado_acao = gerenciar_financa(user_id, argumentos.get("tipo"), argumentos.get("valor"), argumentos.get("descricao"))
                 elif nome_funcao == "consultar_extrato":
-                    
+                    resultado_acao = consultar_extrato(user_id)
+                elif nome_funcao == "agendar_lembrete":
