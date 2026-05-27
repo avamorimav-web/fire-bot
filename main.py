@@ -17,14 +17,14 @@ openai.api_key = CHAVE_OPENAI
 USUARIOS_PERMITIDOS = [5435085592]  # Seu ID de Administrador
 USUARIO_DONO = "@Alexandreav"  # Seu usuário para contato
 
-# Instrução mestre otimizada para respostas rápidas, sem enrolação e sem LaTeX
+# Instrução mestre otimizada
 PROMPT_SISTEMA = (
     "Você é o Robô de Fogo Avançado, uma IA prestativa, curta e muito direta. "
     "Diretrizes obrigatórias de comportamento:\n"
     "1. Responda SEMPRE em português do Brasil, de forma natural.\n"
     "2. Seja o mais resumido possível. Vá direto ao ponto e evite textos longos.\n"
-    "3. NUNCA use formatação LaTeX ou símbolos matemáticos complexos como '\\[' ou '\\times'. Use texto normal (ex: 7000 x 17 = 119000).\n"
-    "4. Ao receber foto de tarefa escolar, dê apenas as respostas das questões de forma curta e objetiva, sem fazer introduções ou explicações longas."
+    "3. NUNCA use formatação LaTeX ou símbolos matemáticos complexos como '\\[' ou '\\times'. Use texto normal.\n"
+    "4. Ao receber foto de tarefa escolar, dê apenas as respostas das questões de forma curta e objetiva."
 )
 
 # =====================================================================
@@ -45,18 +45,8 @@ def responder_com_chatgpt(texto):
         )
         return response.choices[0].message.content
     except Exception as e:
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": PROMPT_SISTEMA},
-                    {"role": "user", "content": texto}
-                ]
-            )
-            return response.choices[0].message['content']
-        except Exception as erro_antigo:
-            print(f"Erro OpenAI Texto: {erro_antigo}")
-            return "Tive um probleminha para processar o texto agora. Pode tentar de novo?"
+        print(f"Erro OpenAI Texto: {e}")
+        return "Tive um probleminha para processar o texto agora. Pode tentar de novo?"
 
 def analisar_foto_e_tarefa(url_da_foto):
     """Lê fotos e resolve tarefas escolares direto ao ponto, sem enrolar"""
@@ -127,7 +117,7 @@ def tratar_foto(message):
     except Exception as e:
         bot.reply_to(message, "Erro ao baixar ou processar a imagem.")
 
-# Recebimento de RECONHECIMENTO DE VOZ
+# 🎙️ RECEBIMENTO E TRANSCRIÇÃO DE ÁUDIO REAL
 @bot.message_handler(content_types=['voice'])
 def tratar_voz(message):
     user_id = message.from_user.id
@@ -135,8 +125,41 @@ def tratar_voz(message):
         verificar_e_bloquear_intruso(message)
         return
 
-    bot.reply_to(message, "🎙️ Ouvindo seu áudio...")
-    bot.reply_to(message, "Áudio recebido! Estou processando o comando de voz no painel.")
+    aviso = bot.reply_to(message, "🎙️ Ouvindo e processando seu áudio... Aguarde.")
+    
+    try:
+        # 1. Baixa o arquivo de áudio do Telegram
+        file_info = bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{TOKEN_TELEGRAM}/{file_info.file_path}"
+        audio_data = requests.get(file_url).content
+        
+        nome_arquivo = f"voice_{message.message_id}.ogg"
+        with open(nome_arquivo, "wb") as f:
+            f.write(audio_data)
+            
+        # 2. Envia para a OpenAI transcrever o áudio em texto
+        from openai import OpenAI
+        client = OpenAI(api_key=CHAVE_OPENAI)
+        
+        with open(nome_arquivo, "rb") as audio_file:
+            transcricao = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+        
+        texto_audio = transcricao.text
+        os.remove(nome_arquivo) # Deleta o arquivo temporário
+        
+        # 3. Faz a IA responder o que foi falado no áudio
+        resposta_ia = responder_com_chatgpt(texto_audio)
+        
+        # Apaga o aviso de "processando" e manda a resposta real
+        bot.delete_message(message.chat.id, aviso.message_id)
+        bot.reply_to(message, f"🗣️ *Você disse:* \"{texto_audio}\"\n\n🤖 *Resposta:* {resposta_ia}", parse_mode="Markdown")
+        
+    except Exception as e:
+        print(f"Erro ao processar áudio: {e}")
+        bot.edit_message_text("Não consegui entender o áudio. Tente falar mais claro ou enviar texto.", message.chat.id, aviso.message_id)
 
 # Mensagens de TEXTO GERAIS
 @bot.message_handler(func=lambda message: True)
