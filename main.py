@@ -6,28 +6,27 @@ import telebot
 from openai import OpenAI
 from datetime import datetime
 
-# ----------------------------------------------------------------------
-# 1. CONFIGURAÇÃO DE SEGREDOS E INICIALIZAÇÃO
-# ----------------------------------------------------------------------
+# ======================================================================
+# 1. CONFIGURAÇÕES INICIAIS E ENV
+# ======================================================================
 TOKEN_TELEGRAM = os.environ.get('TELEGRAM_TOKEN')
-CHAVE_OPENAI = os.environ.get('GEMINI_API_KEY') 
+CHAVE_OPENAI = os.environ.get('GEMINI_API_KEY')
 
-print("🔥 [SISTEMA] Inicializando Fire iA v4 - Edição Administrador Blindada...")
+print("🔥 [SISTEMA] Iniciando Fire iA v4 - Versão de Recuperação...")
 
 bot = telebot.TeleBot(TOKEN_TELEGRAM)
 client = OpenAI(api_key=CHAVE_OPENAI)
 
-ID_ADMIN_ALEXANDRE = 5435085592 
+ID_ADMIN_ALEXANDRE = 5435085592
 
-# ----------------------------------------------------------------------
-# 2. ARQUITETURA DO BANCO DE DADOS (PERSISTÊNCIA CONFIÁVEL)
-# ----------------------------------------------------------------------
+# ======================================================================
+# 2. BANCO DE DADOS (SQLITE)
+# ======================================================================
 def iniciar_banco():
     try:
         conn = sqlite3.connect('fire_ia_data.db')
         cursor = conn.cursor()
         
-        # Fluxo de Caixa / Finanças
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS financas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +37,6 @@ def iniciar_banco():
                 data TEXT
             )
         ''')
-        # Clientes Autorizados
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS clientes (
                 telegram_id INTEGER PRIMARY KEY,
@@ -46,7 +44,6 @@ def iniciar_banco():
                 status TEXT DEFAULT 'ativo'
             )
         ''')
-        # Lembretes Inteligentes
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS lembretes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,7 +53,6 @@ def iniciar_banco():
                 status TEXT DEFAULT 'pendente'
             )
         ''')
-        # Memória Conversacional
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS historico_conversas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,15 +64,15 @@ def iniciar_banco():
         ''')
         conn.commit()
         conn.close()
-        print("🔥 [BANCO DE DADOS] Estrutura verificada com sucesso.")
+        print("🔥 [BANCO DE DADOS] Base inicializada com sucesso.")
     except Exception as e:
-        print(f"❌ [ERRO BANCO] Falha crítica ao iniciar banco: {e}")
+        print(f"❌ [ERRO BANCO] Falha ao iniciar: {e}")
 
 iniciar_banco()
 
-# ----------------------------------------------------------------------
-# 3. NÚCLEO DE MEMÓRIA E GESTÃO DE CONTEXTO
-# ----------------------------------------------------------------------
+# ======================================================================
+# 3. GESTÃO DE MEMÓRIA DO CHAT
+# ======================================================================
 def salvar_na_memoria(user_id, papel, texto):
     try:
         conn = sqlite3.connect('fire_ia_data.db')
@@ -85,7 +81,7 @@ def salvar_na_memoria(user_id, papel, texto):
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"❌ [ERRO MEMÓRIA] Falha ao salvar mensagem: {e}")
+        print(f"❌ [ERRO MEMÓRIA] {e}")
 
 def buscar_memoria_usuario(user_id, limite=15):
     try:
@@ -94,19 +90,18 @@ def buscar_memoria_usuario(user_id, limite=15):
         cursor.execute('SELECT role, content FROM historico_conversas WHERE telegram_id = ? ORDER BY data DESC LIMIT ?', (user_id, limite))
         linhas = cursor.fetchall()
         conn.close()
-        return [{"role": papel, "content": conteudo} for papel, conteudo in reversed(linhas)]
+        return [{"role": p, "content": c} for p, c in reversed(linhas)]
     except Exception as e:
-        print(f"❌ [ERRO MEMÓRIA] Falha ao ler histórico: {e}")
+        print(f"❌ [ERRO MEMÓRIA CHAT] {e}")
         return []
 
-# ----------------------------------------------------------------------
-# 4. DECORADOR: TRAVA DE SEGURANÇA MÁXIMA
-# ----------------------------------------------------------------------
+# ======================================================================
+# 4. CONTROLE DE ACESSO (SEGURANÇA)
+# ======================================================================
 def trava_seguranca(funcao):
     def wrapper(message, *args, **kwargs):
         user_id = message.from_user.id
         
-        # Se for o Admin Alexandre, acesso total garantido
         if user_id == ID_ADMIN_ALEXANDRE:
             return funcao(message, *args, **kwargs)
             
@@ -120,35 +115,30 @@ def trava_seguranca(funcao):
             if resultado and resultado[0] == 'ativo':
                 return funcao(message, *args, **kwargs)
         except Exception as e:
-            print(f"❌ [ERRO SEGURANÇA] Falha ao checar permissões: {e}")
+            print(f"❌ [ERRO TRAVA] {e}")
             
-        msg_bloqueio = (
-            "❌ *Acesso Restrito!*\n\n"
-            "Seu perfil não está autorizado a utilizar o sistema do **Fire iA**.\n"
-            "Envie seu ID para o Administrador solicitar a liberação:\n\n"
-            f"🆔 *Seu ID:* `{user_id}`"
-        )
-        bot.send_message(message.chat.id, msg_bloqueio, parse_mode="Markdown")
+        msg = f"❌ *Acesso Restrito!*\n\nSeu perfil não está autorizado.\n🆔 *Seu ID:* `{user_id}`"
+        bot.send_message(message.chat.id, msg, parse_mode="Markdown")
         return
     return wrapper
 
-# ----------------------------------------------------------------------
-# 5. MOTORES DE FUNÇÃO (AÇÕES DO SISTEMA)
-# ----------------------------------------------------------------------
+# ======================================================================
+# 5. EXECUÇÃO DE FUNÇÕES INTERNAS (NÚCLEO)
+# ======================================================================
 def pesquisar_internet(termo):
     try:
         url = f"https://html.duckduckgo.com/html/?q={termo}"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         res = requests.get(url, headers=headers, timeout=10)
         if res.status_code == 200:
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(res.text, 'html.parser')
-            snippets = [div.get_text() for div in soup.find_all('div', class_='result__snippet')][:4]
+            snippets = [d.get_text() for d in soup.find_all('div', class_='result__snippet')][:4]
             if snippets:
                 return "\n\n".join(snippets)
-        return "Nenhum resultado recente foi encontrado na internet para esta busca."
+        return "Nenhum resultado recente encontrado."
     except Exception as e:
-        return f"Falha de conexão ao pesquisar na web: {e}"
+        return f"Erro na pesquisa web: {e}"
 
 def gerenciar_financa(user_id, tipo, valor, descricao):
     try:
@@ -159,9 +149,9 @@ def gerenciar_financa(user_id, tipo, valor, descricao):
                        (user_id, tipo.upper(), float(valor), descricao, data_atual))
         conn.commit()
         conn.close()
-        return f"💰 *[Sucesso]* R$ {float(valor):.2f} registrado como {tipo.upper()} ({descricao})."
+        return f"💰 *[Sucesso]* R$ {float(valor):.2f} em {tipo.upper()} ({descricao})."
     except Exception as e:
-        return f"❌ Erro interno ao salvar movimentação financeira: {e}"
+        return f"❌ Erro nas finanças: {e}"
 
 def consultar_extrato(user_id):
     try:
@@ -171,25 +161,23 @@ def consultar_extrato(user_id):
         linhas = cursor.fetchall()
         conn.close()
         
-        if not linhas: 
-            return "📊 Você ainda não possui movimentações financeiras registradas."
+        if not lines:
+            return "📊 Nenhuma movimentação registrada."
             
-        extrato = "📊 *Seu Extrato Financeiro Atualizado:*\n\n"
-        total_entrada = total_saida = 0
-        for tipo, valor, desc, data in linhas:
-            data_limpa = data.split()[0]
-            if tipo == "ENTRADA":
-                extrato += f"🟢 + R$ {valor:.2f} | {desc} (_{data_limpa}_)\n"
-                total_entrada += valor
+        extrato = "📊 *Seu Extrato:* \n\n"
+        ent = sai = 0
+        for t, v, d, dt in linhas:
+            limpa = dt.split()[0]
+            if t == "ENTRADA":
+                extrato += f"🟢 + R$ {v:.2f} | {d} ({limpa})\n"
+                ent += v
             else:
-                extrato += f"🔴 - R$ {valor:.2f} | {desc} (_{data_limpa}_)\n"
-                total_saida += valor
-                
-        saldo = total_entrada - total_saida
-        extrato += f"\n🔹 *Total Entradas:* R$ {total_entrada:.2f}\n🔸 *Total Saídas:* R$ {total_saida:.2f}\n💰 *Saldo Geral:* R$ {saldo:.2f}"
+                extrato += f"🔴 - R$ {v:.2f} | {d} ({limpa})\n"
+                sai += v
+        extrato += f"\n🔹 Entradas: R$ {ent:.2f}\n🔸 Saídas: R$ {sai:.2f}\n💰 Saldo: R$ {ent-sai:.2f}"
         return extrato
     except Exception as e:
-        return f"❌ Erro interno ao gerar relatório financeiro: {e}"
+        return f"❌ Erro no extrato: {e}"
 
 def agendar_lembrete(user_id, tarefa, data_hora):
     try:
@@ -198,9 +186,9 @@ def agendar_lembrete(user_id, tarefa, data_hora):
         cursor.execute('INSERT INTO lembretes (telegram_id, tarefa, data_hora) VALUES (?, ?, ?)', (user_id, tarefa, data_hora))
         conn.commit()
         conn.close()
-        return f"⏰ *[Lembrete Agendado]*\n📝 *Compromisso:* {tarefa}\n📅 *Data/Hora:* {data_hora}"
+        return f"⏰ *[Lembrete Agendado]*\n📝 Tarefa: {tarefa}\n📅 Data: {data_hora}"
     except Exception as e:
-        return f"❌ Erro ao registrar lembrete no banco: {e}"
+        return f"❌ Erro no lembrete: {e}"
 
 def gerenciar_painel_adm(comando, id_alvo, nome_alvo=None):
     try:
@@ -214,41 +202,38 @@ def gerenciar_painel_adm(comando, id_alvo, nome_alvo=None):
                 ON CONFLICT(telegram_id) DO UPDATE SET status='ativo', nome=COALESCE(?, nome)
             ''', (id_alvo, nome_alvo, nome_alvo))
             conn.commit()
-            msg = f"🟢 *Acesso Liberado!* O usuário *{nome_alvo}* (ID: `{id_alvo}`) agora está ativo no Fire iA."
+            msg = f"🟢 *Acesso Ativado:* {nome_alvo} (ID: `{id_alvo}`)"
         elif comando == "BLOQUEAR":
             cursor.execute('UPDATE clientes SET status="bloqueado" WHERE telegram_id=?', (id_alvo,))
             conn.commit()
-            msg = f"🔴 *Acesso Revogado!* O ID `{id_alvo}` foi bloqueado pelo Administrador."
+            msg = f"🔴 *Acesso Bloqueado:* ID `{id_alvo}`"
         elif comando == "LISTAR":
             cursor.execute('SELECT telegram_id, nome, status FROM clientes')
             linhas = cursor.fetchall()
             if not linhas:
-                msg = "📋 Nenhum cliente cadastrado na base de dados até o momento."
+                msg = "📋 Nenhum cliente registrado."
             else:
-                msg = "📋 *Painel de Clientes Autorizados (Fire iA):*\n\n"
+                msg = "📋 *Clientes Cadastrados:*\n\n"
                 for tid, nome, status in linhas:
-                    status_icon = "🟢" if status == 'ativo' else "🔴"
-                    msg += f"{status_icon} *{nome}* - ID: `{tid}` (_{status}_)\n"
-                    
+                    icon = "🟢" if status == 'ativo' else "🔴"
+                    msg += f"{icon} *{nome}* - ID: `{tid}` ({status})\n"
         conn.close()
         return msg
     except Exception as e:
-        return f"❌ Erro executando comando no painel administrativo: {e}"
+        return f"❌ Erro no painel adm: {e}"
 
-# ----------------------------------------------------------------------
-# 6. DEFINIÇÃO NATIVA DAS TOOLS DA API DA OPENAI (FUNCTION CALLING)
-# ----------------------------------------------------------------------
+# ======================================================================
+# 6. ARQUITETURA DE MODELOS (TOOLS)
+# ======================================================================
 FERRAMENTAS_FIRE = [
     {
         "type": "function",
         "function": {
             "name": "pesquisar_internet",
-            "description": "Busca informações em tempo real na internet sobre notícias, cotações, fatos atuais ou dúvidas gerais.",
+            "description": "Busca informações em tempo real na internet.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "termo": {"type": "string", "description": "O termo ou frase exata a ser pesquisado na internet."}
-                },
+                "properties": {"termo": {"type": "string"}},
                 "required": ["termo"]
             }
         }
@@ -257,13 +242,13 @@ FERRAMENTAS_FIRE = [
         "type": "function",
         "function": {
             "name": "gerenciar_financa",
-            "description": "Registra uma nova movimentação monetária de entrada ou saída no fluxo de caixa.",
+            "description": "Registra uma nova movimentação de entrada ou saída financeira.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "tipo": {"type": "string", "enum": ["entrada", "saida"], "description": "Se o dinheiro está entrando ou saindo."},
-                    "valor": {"type": "number", "description": "O valor numérico exato em reais."},
-                    "descricao": {"type": "string", "description": "O motivo ou descrição do gasto ou ganho."}
+                    "tipo": {"type": "string", "enum": ["entrada", "saida"]},
+                    "valor": {"type": "number"},
+                    "descricao": {"type": "string"}
                 },
                 "required": ["tipo", "valor", "descricao"]
             }
@@ -273,7 +258,7 @@ FERRAMENTAS_FIRE = [
         "type": "function",
         "function": {
             "name": "consultar_extrato",
-            "description": "Exibe o extrato financeiro completo com todas as entradas, saídas e o saldo total atualizado.",
+            "description": "Exibe o saldo e movimentações financeiras.",
             "parameters": {"type": "object", "properties": {}}
         }
     },
@@ -281,12 +266,12 @@ FERRAMENTAS_FIRE = [
         "type": "function",
         "function": {
             "name": "agendar_lembrete",
-            "description": "Agenda uma tarefa, aviso ou compromisso para o usuário no sistema.",
+            "description": "Agenda uma tarefa ou aviso para o usuário.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "tarefa": {"type": "string", "description": "Descrição clara do que deve ser lembrado."},
-                    "data_hora": {"type": "string", "description": "Data e horário legível para o agendamento."}
+                    "tarefa": {"type": "string"},
+                    "data_hora": {"type": "string"}
                 },
                 "required": ["tarefa", "data_hora"]
             }
@@ -296,13 +281,13 @@ FERRAMENTAS_FIRE = [
         "type": "function",
         "function": {
             "name": "gerenciar_painel_adm",
-            "description": "Comando exclusivo do Administrador Alexandre para gerenciar clientes (Ativar, Bloquear ou Listar).",
+            "description": "Painel de controle de clientes (Exclusivo Admin Alexandre).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "comando": {"type": "string", "enum": ["ATIVAR", "BLOQUEAR", "LISTAR"], "description": "Ação administrativa desejada."},
-                    "id_alvo": {"type": "integer", "description": "O ID do Telegram do cliente que sofrerá a ação (use 0 se for comando LISTAR)."},
-                    "nome_alvo": {"type": "string", "description": "Nome do cliente (obrigatório apenas se comando for ATIVAR)."}
+                    "comando": {"type": "string", "enum": ["ATIVAR", "BLOQUEAR", "LISTAR"]},
+                    "id_alvo": {"type": "integer"},
+                    "nome_alvo": {"type": "string"}
                 },
                 "required": ["comando", "id_alvo"]
             }
@@ -310,24 +295,20 @@ FERRAMENTAS_FIRE = [
     }
 ]
 
-# ----------------------------------------------------------------------
-# 7. MANIPULADORES DE COMANDOS E ENTRADAS DO TELEGRAM
-# ----------------------------------------------------------------------
-
+# ======================================================================
+# 7. EVENTOS TELEGRAM
+# ======================================================================
 @bot.message_handler(commands=['start'])
 @trava_seguranca
 def boas_vindas(message):
     nome = message.from_user.first_name if message.from_user.first_name else "Cliente"
     texto = (
         f"🔥 *Bem-vindo ao Fire iA, {nome}!* 🔥\n\n"
-        "Eu sou o seu assistente central de Inteligência Artificial, operando **100% por conversa natural**! Tenho as seguintes funções prontas:\n\n"
-        "📚 *Professor Particular:* Envie fotos de qualquer lição ou conta para ver a resolução passo a passo.\n"
-        "🧮 *Super Calculadora:* Execute contas matemáticas complexas e lógicas instantaneamente.\n"
-        "🎙️ *Comandos por Voz:* Fale naturalmente por áudio que eu entendo e executo tudo.\n"
-        "💰 *Fluxo de Caixa:* Registre seus ganhos e gastos de forma simples e peça seu extrato.\n"
-        "⏰ *Lembretes:* Peça para eu agendar lembretes e tarefas importantes.\n"
-        "🔍 *Pesquisa na Web:* Consulte notícias, cotações ou fatos atuais em tempo real na internet.\n\n"
-        "Como posso te ajudar agora? Pode falar!"
+        "Estou pronto e operando por linguagem natural. Funções disponíveis:\n"
+        "📚 Envio de fotos com visão computacional para responder tarefas.\n"
+        "🎙️ Comandos diretos por áudio.\n"
+        "💰 Fluxo de caixa completo e gerenciamento de lembretes.\n"
+        "🔍 Consultas em tempo real na internet."
     )
     bot.send_message(message.chat.id, texto, parse_mode="Markdown")
 
@@ -336,43 +317,41 @@ def boas_vindas(message):
 def tratar_foto(message):
     try:
         bot.send_chat_action(message.chat.id, 'typing')
-        file_id = message.photo[-1].file_id
-        file_info = bot.get_file(file_id)
-        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
+        f_id = message.photo[-1].file_id
+        f_info = bot.get_file(f_id)
+        f_url = f"https://api.telegram.org/file/bot{bot.token}/{f_info.file_path}"
         
-        prompt_visao = "Você é o Fire iA. Analise detalhadamente a imagem recebida. Se for um exercício, resolva com o passo a passo completo."
-        
-        response = client.chat.completions.create(
+        res = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": [{"type": "text", "text": prompt_visao}, {"type": "image_url", "image_url": {"url": file_url}}]}]
+            messages=[{"role": "user", "content": [{"type": "text", "text": "Analise a imagem a seguir:"}, {"type": "image_url", "image_url": {"url": f_url}}]}]
         )
-        bot.reply_to(message, response.choices[0].message.content)
+        bot.reply_to(message, res.choices[0].message.content)
     except Exception as e:
-        print(f"❌ [ERRO VISÃO] {e}")
-        bot.reply_to(message, "🔥 Houve um erro temporário ao analisar esta imagem.")
+        print(f"❌ [ERRO IMAGEM] {e}")
+        bot.reply_to(message, "🔥 Falha ao processar arquivo de imagem.")
 
 @bot.message_handler(content_types=['voice'])
 @trava_seguranca
 def tratar_voz(message):
     try:
         bot.send_chat_action(message.chat.id, 'typing')
-        file_info = bot.get_file(message.voice.file_id)
-        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
-        audio_data = requests.get(file_url).content
+        f_info = bot.get_file(message.voice.file_id)
+        f_url = f"https://api.telegram.org/file/bot{bot.token}/{f_info.file_path}"
+        audio = requests.get(f_url).content
         
-        nome_arquivo = f"voice_{message.message_id}.ogg"
-        with open(nome_arquivo, "wb") as f: 
-            f.write(audio_data)
+        nome = f"v_{message.message_id}.ogg"
+        with open(nome, "wb") as f:
+            f.write(audio)
             
-        with open(nome_arquivo, "rb") as audio_file:
-            transcricao = client.audio.transcriptions.create(model="whisper-1", file=audio_file)
+        with open(nome, "rb") as af:
+            trans = client.audio.transcriptions.create(model="whisper-1", file=af)
             
-        os.remove(nome_arquivo)
-        message.text = transcricao.text
+        os.remove(nome)
+        message.text = trans.text
         tratar_texto(message)
     except Exception as e:
         print(f"❌ [ERRO VOZ] {e}")
-        bot.reply_to(message, "🔥 Ocorreu uma falha ao processar o seu áudio.")
+        bot.reply_to(message, "🔥 Falha ao ler arquivo de áudio.")
 
 @bot.message_handler(content_types=['text'])
 @trava_seguranca
@@ -382,51 +361,84 @@ def tratar_texto(message):
         bot.send_chat_action(message.chat.id, 'typing')
         
         eh_admin = "SIM" if user_id == ID_ADMIN_ALEXANDRE else "NÃO"
-        data_hora_atual = datetime.now().strftime("%A, %d de %B de %Y - %H:%M:%S")
+        dt_atual = datetime.now().strftime("%A, %d de %B de %Y - %H:%M:%S")
         
         salvar_na_memoria(user_id, "user", message.text)
-        historico = buscar_memoria_usuario(user_id, limite=15)
+        hist = buscar_memoria_usuario(user_id, limite=15)
         
-        prompt_sistema = {
+        sys_prompt = {
             "role": "system",
             "content": (
-                f"Você é o Fire iA, uma Inteligência Artificial poderosa desenvolvida pelo seu criador, o Admin Alexandre.\n"
-                f"O usuário atual na conversa é o Admin Alexandre? {eh_admin} (ID Telegram: {user_id}).\n"
-                f"DATA E HORA DO SERVIDOR: {data_hora_atual}.\n\n"
-                "Instruções:\n"
-                "1. Você opera por conversa natural.\n"
-                "2. Use as ferramentas nativas (tools) sempre que necessário (pesquisar internet, finanças, lembretes, gerenciar_painel_adm).\n"
-                "3. A ferramenta 'gerenciar_painel_adm' serve para Ativar, Bloquear ou Listar clientes e é de uso EXCLUSIVO do Admin Alexandre.\n"
-                "4. Se o usuário atual NÃO for o Admin Alexandre e tentar gerenciar o painel, a ferramenta avisará que ele não tem permissão.\n"
-                "5. Se a busca web trouxer dados, use-os e nunca diga que seu conhecimento está limitado a 2023.\n"
-                "6. Responda diretamente em Markdown sem enrolação."
+                f"Você é o Fire iA, assistente inteligente criado pelo Admin Alexandre.\n"
+                f"O usuário atual é o Admin Alexandre? {eh_admin} (ID: {user_id}).\n"
+                f"DATA DO SERVIDOR: {dt_atual}.\n\n"
+                "Regras:\n"
+                "1. Use tools nativas para ações (web, finanças, lembretes, adm).\n"
+                "2. 'gerenciar_painel_adm' é estritamente restrito ao criador Alexandre.\n"
+                "3. Se buscar na web, use os dados sem alegar limitações cronológicas antigas.\n"
+                "4. Responda em Markdown estruturado."
             )
         }
         
-        mensagens_completas = [prompt_sistema] + historico
+        ctx = [sys_prompt] + hist
         
-        response = client.chat.completions.create(
+        res = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=mensagens_completas,
+            messages=ctx,
             tools=FERRAMENTAS_FIRE,
             tool_choice="auto"
         )
         
-        resposta_mensagem = response.choices[0].message
-        tool_calls = resposta_mensagem.tool_calls
+        msg_obj = res.choices[0].message
+        calls = msg_obj.tool_calls
         
-        if tool_calls:
-            print(f"📦 [TOOLS] Ativando {len(tool_calls)} ferramenta(s).")
-            mensagens_completas.append(resposta_mensagem)
-            
-            for tool_call in tool_calls:
-                nome_funcao = tool_call.function.name
-                argumentos = json.loads(tool_call.function.arguments)
-                resultado_acao = ""
+        if calls:
+            ctx.append(msg_obj)
+            for call in calls:
+                f_name = call.function.name
+                args = json.loads(call.function.arguments)
+                ret = ""
                 
-                # Execução Direta Segura
-                if nome_funcao == "pesquisar_internet":
-                    resultado_acao = pesquisar_internet(argumentos.get("termo"))
-                elif nome_funcao == "gerenciar_financa":
-                    resultado_acao = gerenciar_financa(user_id, argumentos.get("tipo"), argumentos.get("valor"), argumentos.get("descricao"))
-                elif nome_funcao == "consultar_extrato
+                if f_name == "pesquisar_internet":
+                    ret = pesquisar_internet(args.get("termo"))
+                elif f_name == "gerenciar_financa":
+                    ret = gerenciar_financa(user_id, args.get("tipo"), args.get("valor"), args.get("descricao"))
+                elif f_name == "consultar_extrato":
+                    ret = consultar_extrato(user_id)
+                elif f_name == "agendar_lembrete":
+                    ret = agendar_lembrete(user_id, args.get("tarefa"), args.get("data_hora"))
+                elif f_name == "gerenciar_painel_adm":
+                    if eh_admin == "SIM":
+                        ret = gerenciar_painel_adm(args.get("comando"), args.get("id_alvo"), args.get("nome_alvo"))
+                    else:
+                        ret = "❌ Erro: Função restrita ao administrador."
+                        
+                ctx.append({
+                    "tool_call_id": call.id,
+                    "role": "tool",
+                    "name": f_name,
+                    "content": ret
+                })
+                
+            final_res = client.chat.completions.create(model="gpt-4o-mini", messages=ctx)
+            txt = final_res.choices[0].message.content
+            bot.send_message(message.chat.id, txt, parse_mode="Markdown")
+            salvar_na_memoria(user_id, "assistant", txt)
+        else:
+            txt = msg_obj.content
+            bot.send_message(message.chat.id, txt, parse_mode="Markdown")
+            salvar_na_memoria(user_id, "assistant", txt)
+            
+    except Exception as e:
+        print(f"❌ [ERRO FLUXO CORE] {e}")
+        bot.reply_to(message, "🔥 Instabilidade interna encontrada.")
+
+# ======================================================================
+# 8. POLLING
+# ======================================================================
+print("🔥 [SISTEMA] Escutando requisições do Telegram...")
+while True:
+    try:
+        bot.polling(none_stop=True, timeout=60, long_polling_timeout=30)
+    except Exception as ep:
+        print(f"⚠️ [REBOOT] Reiniciando loop: {ep}")
