@@ -16,8 +16,16 @@ CHAVE_OPENAI = os.environ.get('GEMINI_API_KEY')
 
 print("🔥 [SISTEMA] Iniciando Fire iA v6.1 - Comercial (Admin: @Alexandreav)...")
 
-bot = telebot.TeleBot(TOKEN_TELEGRAM)
-client = OpenAI(api_key=CHAVE_OPENAI)
+if not TOKEN_TELEGRAM:
+    print("❌ [ERRO CRÍTICO] A variável de ambiente 'TELEGRAM_TOKEN' não foi configurada!")
+if not CHAVE_OPENAI:
+    print("❌ [ERRO CRÍTICO] A variável de ambiente 'GEMINI_API_KEY' não foi configurada!")
+
+try:
+    bot = telebot.TeleBot(TOKEN_TELEGRAM)
+    client = OpenAI(api_key=CHAVE_OPENAI)
+except Exception as e:
+    print(f"❌ [ERRO INICIALIZAÇÃO] Falha ao configurar clientes de API: {e}")
 
 ID_ADMIN_ALEXANDRE = 5435085592
 USUARIO_TELEGRAM_ADMIN = "Alexandreav" 
@@ -369,7 +377,7 @@ def boas_vindas(message):
         "💰 Fluxo de caixa e lembretes integrados ao seu fuso horário.\n"
         "🔍 Consultas em tempo real na internet."
     )
-    bot.send_message(message.chat.id, texto, parse_mode="Markdown")
+    bot.send_message(message.chat.id, text=texto, parse_mode="Markdown")
 
 @bot.message_handler(commands=['fuso'])
 @trava_seguranca
@@ -385,7 +393,7 @@ def comando_fuso(message):
                 "`/fuso America/Acre` (Acre)\n"
                 "`/fuso America/Belem` (Pará)"
             )
-            bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+            bot.send_message(message.chat.id, text=msg, parse_mode="Markdown")
             return
             
         novo_fuso = partes[1]
@@ -485,3 +493,38 @@ def tratar_texto(message):
                     ret = agendar_lembrete(user_id, args.get("tarefa"), args.get("data_hora"))
                 elif f_name == "gerenciar_painel_adm":
                     if eh_admin == "SIM":
+                        ret = gerenciar_painel_adm(
+                            args.get("comando"), 
+                            args.get("id_alvo"), 
+                            args.get("nome_alvo"),
+                            args.get("fuso_alvo", "America/Sao_Paulo")
+                        )
+                    else:
+                        ret = "❌ Erro: Função restrita ao administrador."
+                ctx.append({
+                    "tool_call_id": call.id,
+                    "role": "tool",
+                    "name": f_name,
+                    "content": ret
+                })
+            final_res = client.chat.completions.create(model="gpt-4o-mini", messages=ctx)
+            txt = final_res.choices[0].message.content
+            bot.send_message(message.chat.id, text=txt, parse_mode="Markdown")
+            salvar_na_memoria(user_id, "assistant", txt)
+        else:
+            txt = msg_obj.content
+            bot.send_message(message.chat.id, text=txt, parse_mode="Markdown")
+            salvar_na_memoria(user_id, "assistant", txt)
+    except Exception as e:
+        print(f"❌ [ERRO FLUXO CORE] {e}")
+        bot.reply_to(message, "🔥 Instabilidade interna encontrada.")
+
+# ======================================================================
+# 8. POLLING (COM REBOOT SEGURO ANTI-FALLOUT)
+# ======================================================================
+print("🔥 [SISTEMA] Escutando requisições do Telegram...")
+while True:
+    try:
+        bot.polling(none_stop=True, timeout=60, long_polling_timeout=30)
+    except Exception as ep:
+        print(f"⚠️ [REBOOT] Reiniciando loop devido a falha: {ep}")
