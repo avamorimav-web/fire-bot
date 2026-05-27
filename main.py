@@ -4,6 +4,8 @@ import json
 import requests
 import telebot
 import pytz
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from openai import OpenAI
 from datetime import datetime
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -13,6 +15,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # ======================================================================
 TOKEN_TELEGRAM = os.environ.get('TELEGRAM_TOKEN')
 CHAVE_OPENAI = os.environ.get('GEMINI_API_KEY')
+PORTA = int(os.environ.get('PORT', 8080))
 
 print("🔥 [SISTEMA] Iniciando Fire iA v6.1 - Comercial (Admin: @Alexandreav)...")
 
@@ -173,7 +176,7 @@ def trava_seguranca(funcao):
             f"🆔 *Seu ID de Usuário:* `{user_id}`\n\n"
             "💡 _Para liberar todas as funções (Finanças, Visão Computacional, Áudio e Pesquisa), envie seu ID clicando no botão abaixo e realize sua assinatura!_"
         )
-        bot.send_message(message.chat.id, msg, parse_mode="Markdown", reply_markup=teclado)
+        bot.send_message(message.chat.id, text=msg, parse_mode="Markdown", reply_markup=teclado)
         return
     return wrapper
 
@@ -480,51 +483,4 @@ def tratar_texto(message):
         if calls:
             ctx.append(msg_obj)
             for call in calls:
-                f_name = call.function.name
-                args = json.loads(call.function.arguments)
-                ret = ""
-                if f_name == "pesquisar_internet":
-                    ret = pesquisar_internet(args.get("termo"))
-                elif f_name == "gerenciar_financa":
-                    ret = gerenciar_financa(user_id, args.get("tipo"), args.get("valor"), args.get("descricao"))
-                elif f_name == "consultar_extrato":
-                    ret = consultar_extrato(user_id)
-                elif f_name == "agendar_lembrete":
-                    ret = agendar_lembrete(user_id, args.get("tarefa"), args.get("data_hora"))
-                elif f_name == "gerenciar_painel_adm":
-                    if eh_admin == "SIM":
-                        ret = gerenciar_painel_adm(
-                            args.get("comando"), 
-                            args.get("id_alvo"), 
-                            args.get("nome_alvo"),
-                            args.get("fuso_alvo", "America/Sao_Paulo")
-                        )
-                    else:
-                        ret = "❌ Erro: Função restrita ao administrador."
-                ctx.append({
-                    "tool_call_id": call.id,
-                    "role": "tool",
-                    "name": f_name,
-                    "content": ret
-                })
-            final_res = client.chat.completions.create(model="gpt-4o-mini", messages=ctx)
-            txt = final_res.choices[0].message.content
-            bot.send_message(message.chat.id, text=txt, parse_mode="Markdown")
-            salvar_na_memoria(user_id, "assistant", txt)
-        else:
-            txt = msg_obj.content
-            bot.send_message(message.chat.id, text=txt, parse_mode="Markdown")
-            salvar_na_memoria(user_id, "assistant", txt)
-    except Exception as e:
-        print(f"❌ [ERRO FLUXO CORE] {e}")
-        bot.reply_to(message, "🔥 Instabilidade interna encontrada.")
-
-# ======================================================================
-# 8. POLLING (COM REBOOT SEGURO ANTI-FALLOUT)
-# ======================================================================
-print("🔥 [SISTEMA] Escutando requisições do Telegram...")
-while True:
-    try:
-        bot.polling(none_stop=True, timeout=60, long_polling_timeout=30)
-    except Exception as ep:
-        print(f"⚠️ [REBOOT] Reiniciando loop devido a falha: {ep}")
+                f_name = call.functio
