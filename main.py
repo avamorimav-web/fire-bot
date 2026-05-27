@@ -489,4 +489,4 @@ def tratar_texto(message):
                 if f_name == "pesquisar_internet":
                     ret = pesquisar_internet(args.get("termo", ""))
                 elif f_name == "gerenciar_financa":
-                    ret = gerenciar_financa(use
+                    ret = gerenciar_financa(use)
