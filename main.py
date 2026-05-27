@@ -22,8 +22,22 @@ USUARIO_DONO = "@Alexandreav"  # Seu usuário para contato
 # =====================================================================
 
 def responder_com_chatgpt(texto):
-    """Responde mensagens de texto normais usando o ChatGPT"""
+    """Responde mensagens de texto normais usando o ChatGPT (Compatível com nova e antiga API)"""
     try:
+        # Tenta o formato da API Nova (v1.0.0+)
+        if hasattr(openai, "OpenAI") or os.environ.get("OPENAI_API_KEY"):
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=CHAVE_OPENAI)
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": texto}]
+                )
+                return response.choices[0].message.content
+            except:
+                pass
+        
+        # Se falhar, usa o formato da API Antiga
         response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": texto}]
@@ -31,12 +45,14 @@ def responder_com_chatgpt(texto):
         return response.choices[0].message['content']
     except Exception as e:
         print(f"Erro OpenAI Texto: {e}")
-        return "Desculpe, tive um problema ao processar o texto agora."
+        return f"Erro na IA: {e}"  # Agora o robô vai te dizer o erro real no Telegram!
 
 def analisar_foto_e_tarefa(url_da_foto):
     """Lê fotos e resolve tarefas escolares enviadas por imagem"""
     try:
-        response = openai.ChatCompletion.create(
+        from openai import OpenAI
+        client = OpenAI(api_key=CHAVE_OPENAI)
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
@@ -48,7 +64,7 @@ def analisar_foto_e_tarefa(url_da_foto):
                 }
             ]
         )
-        return response.choices[0].message['content']
+        return response.choices[0].message.content
     except Exception as e:
         print(f"Erro OpenAI Visão: {e}")
         return "Não consegui ler ou processar os detalhes desta imagem agora."
@@ -69,7 +85,7 @@ def gerenciar_lembretes(texto):
 # 4. CONTROLADORES DO TELEGRAM (Handlers e Trava de Segurança)
 # =====================================================================
 
-# Comando /start (Apenas texto, sem botões)
+# Comando /start
 @bot.message_handler(commands=['start', 'help'])
 def enviar_boas_vindas(message):
     primeiro_nome = message.from_user.first_name
@@ -86,8 +102,6 @@ def enviar_boas_vindas(message):
 @bot.message_handler(content_types=['photo'])
 def tratar_foto(message):
     user_id = message.from_user.id
-    
-    # Trava de Segurança para fotos
     if user_id not in USUARIOS_PERMITIDOS:
         verificar_e_bloquear_intruso(message)
         return
@@ -96,7 +110,6 @@ def tratar_foto(message):
     try:
         file_info = bot.get_file(message.photo[-1].file_id)
         file_url = f"https://api.telegram.org/file/bot{TOKEN_TELEGRAM}/{file_info.file_path}"
-        
         resposta_foto = analisar_foto_e_tarefa(file_url)
         bot.reply_to(message, resposta_foto)
     except Exception as e:
@@ -106,8 +119,6 @@ def tratar_foto(message):
 @bot.message_handler(content_types=['voice'])
 def tratar_voz(message):
     user_id = message.from_user.id
-    
-    # Trava de Segurança para voz
     if user_id not in USUARIOS_PERMITIDOS:
         verificar_e_bloquear_intruso(message)
         return
@@ -115,30 +126,26 @@ def tratar_voz(message):
     bot.reply_to(message, "🎙️ Ouvindo seu áudio...")
     bot.reply_to(message, "Áudio recebido! Estou processando o comando de voz no painel.")
 
-# Mensagens de TEXTO GERAIS (ChatGPT, Lembretes e Painel)
+# Mensagens de TEXTO GERAIS
 @bot.message_handler(func=lambda message: True)
 def tratar_texto(message):
     user_id = message.from_user.id
     texto_usuario = message.text
 
-    # ⛔ TRAVA DE SEGURANÇA SE A PESSOA NÃO ESTIVER NO SISTEMA
     if user_id not in USUARIOS_PERMITIDOS:
         verificar_e_bloquear_intruso(message)
         return
 
     try:
-        # 1. Verifica se quer acessar o Painel
         if texto_usuario.lower() == "painel":
             bot.reply_to(message, painel_controle_clientes())
             return
 
-        # 2. Verifica se é um Lembrete
         resposta_lembrete = gerenciar_lembretes(texto_usuario)
         if resposta_lembrete:
             bot.reply_to(message, resposta_lembrete)
             return
 
-        # 3. Resposta Padrão Inteligente com ChatGPT
         resposta_ia = responder_com_chatgpt(texto_usuario)
         bot.reply_to(message, resposta_ia)
 
@@ -147,7 +154,6 @@ def tratar_texto(message):
         bot.reply_to(message, "Houve um erro rápido no processamento. Tente novamente.")
 
 def verificar_e_bloquear_intruso(message):
-    """Bloqueia o intruso por texto limpo, exibindo o ID dele e seu @ de contato"""
     id_intruso = message.from_user.id
     texto_bloqueio = (
         f"❌ **ACESSO NEGADO** ❌\n\n"
@@ -161,8 +167,4 @@ def verificar_e_bloquear_intruso(message):
 # 5. INICIALIZAÇÃO
 # =====================================================================
 if __name__ == "__main__":
-    print("---------------------------------------------")
-    print("Robô de Fogo COMPLETO (Sem Botões) iniciado no Render!")
-    print("OpenAI Ativa | IA no controle total.")
-    print("---------------------------------------------")
     bot.infinity_polling()
